@@ -25,6 +25,15 @@ namespace KodoCAD
             return (mils * 25.4f) / 1000f;
         }
 
+        public static bool LineContainsPoint(Point p1, Point p2, Point p, float threshold)
+        {
+            var distanceAC = Distance(p1, p);
+            var distanceBC = Distance(p2, p);
+            var distanceAB = Distance(p1, p2);
+
+            return distanceAC + distanceBC - distanceAB < threshold;
+        }
+
         public static float Distance(Point p1, Point p2)
         {
             return (float)(Math.Sqrt(Math.Pow((p2.X - p1.X), 2) + Math.Pow((p2.Y - p1.Y), 2)));
@@ -63,7 +72,7 @@ namespace KodoCAD
         public static string ToString2(double number) => ToString2((float)number);
         public static string ToString2(float number)
         {
-            return number.ToString("'+'0.000 'mm';'-'0.000 'mm'", CultureInfo.InvariantCulture);
+            return number.ToString("'+'000.000;'-'000.000", CultureInfo.InvariantCulture);
         }
     }
 }

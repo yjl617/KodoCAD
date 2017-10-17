@@ -36,8 +36,6 @@ namespace KodoCAD
 
     class CADWindowTextOptions : Window
     {
-
-
         Button buttonOK;
         Button buttonCancel;
         Textbox textboxText;

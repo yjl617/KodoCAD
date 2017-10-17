@@ -11,13 +11,10 @@ using Kodo.Graphics.Style;
 namespace KodoCAD
 {
     enum GridMode { None, Lines, Points }
-    enum OriginMode { Absolute, Center }
     enum SnapMode { Fine, Coarse }
 
-    enum ToolMode { Select, Move, Line, Rectangle, Circle, Text }
+    enum ToolMode { Select, Move, Line, Rectangle, Circle, Text, Pin }
     enum ToolState { None, Armed, Editing }
-
-
 
     delegate void ShapeEditHandler(Set<CADShape> shape);
 
@@ -50,7 +47,6 @@ namespace KodoCAD
         CADShape shapeInEditing;
 
         GridMode gridMode = GridMode.Lines;
-        OriginMode originMode = OriginMode.Absolute;
         SnapMode snapMode = SnapMode.Coarse;
         ToolMode toolMode = ToolMode.Select;
         ToolState toolState = ToolState.None;
@@ -60,7 +56,7 @@ namespace KodoCAD
 
         float zoomFactor = 1.0f;
         int zoomFactorIndex = 0;
-        float[] zoomFactors = new float[] { 1.0f, 0.5f, 0.25f, 0.1f, 0.05f, 0.025f, 0.01f, 0.005f, 0.0025f, 0.001f, 0.0005f };
+        float[] zoomFactors = new float[] { 1.0f, 0.5f, 0.25f, 0.125f, 0.1f, 0.05f, 0.025f, 0.01f, 0.005f, 0.0025f, 0.001f, 0.0005f };
 
         Point dpi;
 
@@ -105,19 +101,6 @@ namespace KodoCAD
         Matrix3x2 matrixRealToGrid;
         Matrix3x2 matrixOriginTranslation;
 
-        public OriginMode OriginMode
-        {
-            get { return originMode; }
-            set
-            {
-                if (originMode != value)
-                {
-                    originMode = value;
-                    Update();
-                }
-            }
-        }
-
         public Size GridSize
         {
             get { return gridSize; }
@@ -143,6 +126,42 @@ namespace KodoCAD
         public CADEditor(Window window)
             : base(window)
         {
+            /*using (var file = new System.IO.StreamReader(@"C:\Users\Jay\SkyDrive\AMK\Huhtinen\PSU+AMP\PSU+AMP.lib"))
+            {
+                while (true)
+                {
+                    var line = file.ReadLine();
+
+                    if (string.IsNullOrEmpty(line))
+                        break;
+                    if (!line.StartsWith("DEF"))
+                        continue;
+
+                    line = file.ReadLine();
+                    line = file.ReadLine();
+
+                    var parts = line.Split(' ');
+
+                    var txtFormat = new TextFormat("Montserrat", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, CADMath.MilsToMillimeters(int.Parse(parts[4])), "en-US");
+
+                    shapes.Add(new CADShapeText(parts[1].Trim('"'), txtFormat, new Point(CADMath.MilsToMillimeters(int.Parse(parts[2])), -CADMath.MilsToMillimeters(int.Parse(parts[3])))));
+
+                    line = file.ReadLine();
+                    line = file.ReadLine();
+                    line = file.ReadLine();
+                    line = file.ReadLine();
+
+                    parts = line.Split(' ');
+
+                    shapes.Add(new CADShapeRectangle(new Rectangle(
+                        CADMath.MilsToMillimeters(int.Parse(parts[1])),
+                        CADMath.MilsToMillimeters(int.Parse(parts[2])),
+                        CADMath.MilsToMillimeters(int.Parse(parts[3])),
+                        CADMath.MilsToMillimeters(int.Parse(parts[4])))));
+
+                    break;
+                }
+            }*/
         }
 
         protected override void OnMouseUp(Mouse mouse)
@@ -199,6 +218,18 @@ namespace KodoCAD
                             toolState = ToolState.Armed;
                             shapes.Add(shapeInEditing);
 
+                            Update();
+                            break;
+                        case ToolMode.Rectangle:
+                            shapeInEditing = new CADShapeRectangle();
+                            toolState = ToolState.Armed;
+                            shapes.Add(shapeInEditing);
+
+                            Update();
+                            break;
+                        case ToolMode.Pin:
+                            toolMode = ToolMode.Select;
+                            toolState = ToolState.Armed;
                             Update();
                             break;
                         case ToolMode.Text:
@@ -320,7 +351,7 @@ namespace KodoCAD
 
                     foreach (var shape in shapes)
                     {
-                        if (shape.Contains(rel, 0.1f * zoomFactor))
+                        if (shape.Contains(rel, 0.2f * zoomFactor))
                         {
                             shapesSelected.Add(shape);
                             break;
@@ -350,22 +381,6 @@ namespace KodoCAD
                 var rel = SelectRelative(mousePositionRelativeToOriginRealSnapped, mousePositionRelativeToOriginCenterRealSnapped);
                 shapeInEditing.OnMouseMove(rel);
             }
-            /*else
-            {
-                if (shapesSelected.Count > 1)
-                    return;
-
-                shapesSelected.Clear();
-
-                foreach (var shape in shapes)
-                {
-                    if (shape.Contains(mousePositionRelativeToOriginRealSnapped, 0.1f * zoomFactor))
-                    {
-                        shapesSelected.Add(shape);
-                        break;
-                    }
-                }
-            }*/
         }
 
         protected override void OnKeyDown(Key key)
@@ -424,11 +439,11 @@ namespace KodoCAD
                 snapMode = snapMode == SnapMode.Fine ? SnapMode.Coarse : SnapMode.Fine;
                 Update();
             }
-            else if (key == Key.O && Keyboard.IsDown(Key.ShiftLeft))
+            /*else if (key == Key.O && Keyboard.IsDown(Key.ShiftLeft))
             {
                 originMode = originMode == OriginMode.Absolute ? OriginMode.Center : OriginMode.Absolute;
                 Update();
-            }
+            }*/
             else if (key == Key.G && Keyboard.IsDown(Key.ShiftLeft))
             {
                 switch (gridMode)
@@ -463,10 +478,33 @@ namespace KodoCAD
 
                 var rel = SelectRelative(mousePositionRelativeToOriginRealSnapped, mousePositionRelativeToOriginCenterRealSnapped);
 
-                var textFormat = new TextFormat("Montserrat", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 2, "en-US");
+                var textFormat = new TextFormat("Montserrat", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 1, "en-US");
                 shapeInEditing = new CADShapeText("CADShapeText", textFormat, rel);
                 shapes.Add(shapeInEditing);
                 Refresh();
+            }
+            else if (key == Key.P && toolMode != ToolMode.Pin)
+            {
+                toolMode = ToolMode.Pin;
+                var rel = SelectRelative(mousePositionRelativeToOriginRealSnapped, mousePositionRelativeToOriginCenterRealSnapped);
+                var textFormat = new TextFormat("Montserrat", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 1, "en-US");
+                shapeInEditing = new CADShapePin("CADShapePin", 1, 5, PinOrientation.Left, textFormat, textFormat, rel);
+                toolState = ToolState.Armed;
+
+                shapes.Add(shapeInEditing);
+
+                Update();
+            }
+            else if (key == Key.R && toolMode != ToolMode.Rectangle)
+            {
+                toolMode = ToolMode.Rectangle;
+
+                shapeInEditing = new CADShapeRectangle();
+                toolState = ToolState.Armed;
+
+                shapes.Add(shapeInEditing);
+
+                Update();
             }
             else if (key == Key.W && toolMode != ToolMode.Line)
             {
@@ -479,20 +517,17 @@ namespace KodoCAD
 
                 Update();
             }
-            else if (key == Key.M)
+            else if (key == Key.M && shapesSelected.Count > 0)
             {
                 toolMode = ToolMode.Move;
-                toolState = ToolState.Armed;
+                toolState = ToolState.Editing;
 
-                var rel = SelectRelative(mousePositionRelativeToOriginRealSnapped, mousePositionRelativeToOriginCenterRealSnapped);
+                movementStartPoint = shapesSelected.First().Origin;
+                mousePositionOnScreen = RealToScreen(movementStartPoint);
 
-                if (shapesSelected.Count > 0)
-                {
-                    toolState = ToolState.Editing;
-                    movementStartPoint = rel;
-                }
+                Mouse.SetPosition(FromWindowToScreen(FromControlToWindow(mousePositionOnScreen)));
 
-                Refresh();
+                Update();
             }
             else if (key == Key.Space && IsMouseInside == true)
             {
@@ -504,7 +539,7 @@ namespace KodoCAD
 
         Point SelectRelative(Point absolute, Point center)
         {
-            return originMode == OriginMode.Absolute ? absolute : center;
+            return absolute;
         }
 
         /// <summary>
@@ -557,7 +592,7 @@ namespace KodoCAD
             textFormatTest.TextAlignment = TextAlignment.Leading;
             textFormatTest.ParagraphAlignment = ParagraphAlignment.Near;
 
-            textFormatBig = new TextFormat("Source Code Pro", FontWeight.Bold, FontStyle.Normal, FontStretch.Normal, 18, "en-US");
+            textFormatBig = new TextFormat("Source Code Pro", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 16, "en-US");
             textFormatBig.TextAlignment = TextAlignment.Leading;
             textFormatBig.ParagraphAlignment = ParagraphAlignment.Near;
 
@@ -591,7 +626,7 @@ namespace KodoCAD
             originMovable = RealToScreen(originMovableOnReality);
 
             // Must happen after origin calculation.
-            matrixOriginTranslation = Matrix3x2.Translation(originMode == OriginMode.Absolute ? origin : originCenter);
+            matrixOriginTranslation = Matrix3x2.Translation(origin);
 
             mousePositionRelativeToOrigin = ScreenToGrid(mousePositionOnScreen);
             mousePositionRelativeToOriginCenter = new Point(mousePositionOnScreen.X - originCenter.X, mousePositionOnScreen.Y - originCenter.Y);
@@ -810,7 +845,7 @@ namespace KodoCAD
             // Draw the center axis
             //
 
-            if (originMode == OriginMode.Center)
+            //if (originMode == OriginMode.Center)
             {
                 SharedBrush.Opacity = 1;
                 SharedBrush.Color = Color.FromAColor(0.5f, Color.LightSkyBlue);
@@ -842,7 +877,7 @@ namespace KodoCAD
 
             context.DrawRectangle(gridOutline, SharedBrush, 1);
 
-            var infoRect = Rectangle.FromLTRB(area.Right - 200, area.Bottom - 80, area.Right, area.Bottom);
+            var infoRect = Rectangle.FromLTRB(area.Right - 300, area.Bottom - 30, area.Right, area.Bottom);
 
             Style.Align(infoRect);
             context.FillRectangle(infoRect, Style.Background);
@@ -850,17 +885,17 @@ namespace KodoCAD
 
             SharedBrush.Color = Color.GhostWhite;
 
-            var relativeStr = "Relative";
+            var relativeStr = "";
             textFormatBig.TextAlignment = TextAlignment.Center;
             textFormatBig.ParagraphAlignment = ParagraphAlignment.Center;
             var p = mousePositionRelativeToOriginMovableRealSnapped;
             var layoutStr =
-                $"{relativeStr}" +
-                $"\nX {CADMath.ToString2(p.X)}" +
-                $"\nY {CADMath.ToString2(p.Y)}";
+                $"{relativeStr} " +
+                $"dX {CADMath.ToString2(p.X)}" +
+                $" dY {CADMath.ToString2(p.Y)}";
             using (var layout = new TextLayout(layoutStr, textFormatBig, infoRect.Dimensions))
             {
-                layout.SetFontSize(10, new TextRange(layoutStr.IndexOf(relativeStr, StringComparison.Ordinal), relativeStr.Length));
+                //layout.SetFontSize(10, new TextRange(layoutStr.IndexOf(relativeStr, StringComparison.Ordinal), relativeStr.Length));
                 context.DrawTextLayout(layout, infoRect.TopLeft, SharedBrush);
             }
 
