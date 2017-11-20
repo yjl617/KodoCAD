@@ -7,13 +7,13 @@ using System.Threading.Tasks;
 
 using Kodo.Graphics;
 
-namespace KodoCAD
+namespace KodoCad
 {
     public class Set<T> : HashSet<T>
     {
     }
 
-    public static class CADMath
+    public static class CadMath
     {
         public static float MillimetersToMils(float millimeters)
         {

@@ -1,14 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using Kodo.Json;
 using Kodo.Graphics;
 
-namespace KodoCAD
+namespace KodoCad
 {
-    struct CADComponentPin
+    struct CadComponentPin
     {
         public readonly Point Position;
 
@@ -16,7 +18,7 @@ namespace KodoCAD
         public readonly int Number;
     }
 
-    class CADComponent
+    class CadComponent
     {
         string referencePrefix;
         int referenceNumber;
@@ -24,18 +26,18 @@ namespace KodoCAD
         string name;
         Point position;
         PathGeometry geometry;
-        List<CADComponentPin> pins;
+        List<CadComponentPin> pins;
 
-        CADShapeText referenceText;
-        CADShapeText nameText;
+        CadShapeText referenceText;
+        CadShapeText nameText;
 
-        public CADComponent(IEnumerable<CADShape> shapes)
+        public CadComponent(IEnumerable<CadShape> shapes)
         {
 
         }
     }
 
-    abstract class CADShape
+    abstract class CadShape
     {
         public float StrokeWidth = 0.1f;
         public StrokeStyle Stroke { get; set; } = new StrokeStyle(new StrokeStyleProperties(
@@ -57,15 +59,15 @@ namespace KodoCAD
         public abstract void OnMouseMove(Point mousePositionInReal);
         public abstract bool OnMouseDown(Point mousePositionInReal);
 
-        public abstract void OnDraw(Context context, Brush toolBrush);
+        public abstract void OnDraw(Context context, SolidColorBrush toolBrush);
 
         public abstract void Move(Point moveAmount);
 
         public abstract void ToSink(GeometrySink sink, Func<Point, Point> mapper);
-        public abstract string ToOutput();
+        public abstract JsonNode ToOutput();
     }
 
-    class CADShapeLine : CADShape
+    class CadShapeLine : CadShape
     {
         Point lineBegin;
         Point lineEnd;
@@ -73,11 +75,11 @@ namespace KodoCAD
 
         public override Point Origin => lineBegin;
 
-        public CADShapeLine()
+        public CadShapeLine()
         {
         }
 
-        public CADShapeLine(Line line)
+        public CadShapeLine(Line line)
         {
             lineBegin = line.Begin;
             lineEnd = line.end;
@@ -86,7 +88,7 @@ namespace KodoCAD
 
         public override bool Contains(Point inReal, float threshold)
         {
-            return CADMath.LineContainsPoint(lineBegin, lineEnd, inReal, threshold);
+            return CadMath.LineContainsPoint(lineBegin, lineEnd, inReal, threshold);
         }
 
         public override bool Contained(Rectangle inReal)
@@ -115,7 +117,7 @@ namespace KodoCAD
             }
         }
 
-        public override void OnDraw(Context context, Brush toolBrush)
+        public override void OnDraw(Context context, SolidColorBrush toolBrush)
         {
             if (!started)
                 return;
@@ -123,7 +125,7 @@ namespace KodoCAD
             context.DrawLine(lineBegin, lineEnd, toolBrush, StrokeWidth, Stroke);
         }
 
-        public override string ToOutput()
+        public override JsonNode ToOutput()
         {
             throw new NotImplementedException();
         }
@@ -140,7 +142,7 @@ namespace KodoCAD
         }
     }
 
-    class CADShapeRectangle : CADShape
+    class CadShapeRectangle : CadShape
     {
         bool started;
         Point startPoint;
@@ -148,11 +150,11 @@ namespace KodoCAD
 
         public override Point Origin => startPoint;
 
-        public CADShapeRectangle()
+        public CadShapeRectangle()
         {
         }
 
-        public CADShapeRectangle(Rectangle rectangle)
+        public CadShapeRectangle(Rectangle rectangle)
         {
             started = true;
             this.rectangle = rectangle;
@@ -196,7 +198,7 @@ namespace KodoCAD
             }
         }
 
-        public override void OnDraw(Context context, Brush toolBrush)
+        public override void OnDraw(Context context, SolidColorBrush toolBrush)
         {
             if (!started)
                 return;
@@ -209,10 +211,10 @@ namespace KodoCAD
             if (!rectangle.Contains(inReal))
                 return false;
 
-            return CADMath.LineContainsPoint(rectangle.TopLeft, rectangle.TopRight, inReal, threshold) ||
-                   CADMath.LineContainsPoint(rectangle.TopRight, rectangle.BottomRight, inReal, threshold) ||
-                   CADMath.LineContainsPoint(rectangle.BottomLeft, rectangle.BottomRight, inReal, threshold) ||
-                   CADMath.LineContainsPoint(rectangle.TopLeft, rectangle.BottomLeft, inReal, threshold);
+            return CadMath.LineContainsPoint(rectangle.TopLeft, rectangle.TopRight, inReal, threshold) ||
+                   CadMath.LineContainsPoint(rectangle.TopRight, rectangle.BottomRight, inReal, threshold) ||
+                   CadMath.LineContainsPoint(rectangle.BottomLeft, rectangle.BottomRight, inReal, threshold) ||
+                   CadMath.LineContainsPoint(rectangle.TopLeft, rectangle.BottomLeft, inReal, threshold);
         }
 
         public override bool Contained(Rectangle inReal)
@@ -230,9 +232,18 @@ namespace KodoCAD
             throw new NotImplementedException();
         }
 
-        public override string ToOutput()
+        public override JsonNode ToOutput()
         {
-            throw new NotImplementedException();
+            var json = new JsonNode(JsonType.Object, "Rectangle");
+            json.Append(new JsonNode(JsonType.Number, "l", rectangle.Left.ToString(CultureInfo.InvariantCulture)));
+            json.Append(new JsonNode(JsonType.Number, "t", rectangle.Top.ToString(CultureInfo.InvariantCulture)));
+            json.Append(new JsonNode(JsonType.Number, "r", rectangle.Right.ToString(CultureInfo.InvariantCulture)));
+            json.Append(new JsonNode(JsonType.Number, "b", rectangle.Bottom.ToString(CultureInfo.InvariantCulture)));
+
+            json.Append(new JsonNode(Filled ? JsonType.True : JsonType.False, "filled"));
+            json.Append(new JsonNode(JsonType.Number, "stroke", StrokeWidth.ToString(CultureInfo.InvariantCulture)));
+            json.Append(new JsonNode(JsonType.Number, "part", 0.ToString(CultureInfo.InvariantCulture)));
+            return json;
         }
     }
 
@@ -244,7 +255,7 @@ namespace KodoCAD
         Down
     }
 
-    class CADShapePin : CADShape
+    class CadShapePin : CadShape
     {
         float nameOffset = 1;
 
@@ -263,7 +274,7 @@ namespace KodoCAD
 
         public override Point Origin => lineBegin;
 
-        public CADShapePin(string nameOfPin, int numberOfPin, float lenghtOfPin, PinOrientation orientationOfPin, TextFormat formatOfName, TextFormat formatOfNumber, Point initialPosition)
+        public CadShapePin(string nameOfPin, int numberOfPin, float lenghtOfPin, PinOrientation orientationOfPin, TextFormat formatOfName, TextFormat formatOfNumber, Point initialPosition)
         {
             lineBegin = initialPosition;
             lineEnd = initialPosition;
@@ -319,7 +330,7 @@ namespace KodoCAD
             boundingBox = boundingBox.Move(moveAmount.X, moveAmount.Y);
         }
 
-        public override void OnDraw(Context context, Brush toolBrush)
+        public override void OnDraw(Context context, SolidColorBrush toolBrush)
         {
             context.DrawLine(lineBegin, lineEnd, toolBrush, StrokeWidth, Stroke);
 
@@ -361,7 +372,7 @@ namespace KodoCAD
             }
         }
 
-        public override string ToOutput()
+        public override JsonNode ToOutput()
         {
             throw new NotImplementedException();
         }
@@ -372,49 +383,89 @@ namespace KodoCAD
         }
     }
 
-    class CADShapeText : CADShape
+    enum CadShapeAnchor
+    {
+        Left,
+        Center,
+        Right
+    }
+
+    class CadShapeText : CadShape
     {
         bool moving;
         string text;
         float size;
         Point origin;
         TextLayout layout;
+        CadShapeAnchor anchor;
+
+        Rectangle boundingBox;
 
         public string Text => text;
         public float Size => size;
+        public CadShapeAnchor Anchor => anchor;
 
         public override Point Origin => origin;
 
-        public CADShapeText(string text, TextFormat textFormat, Point initialPosition)
+        public CadShapeText(string text, TextFormat textFormat, Point initialPosition, CadShapeAnchor anchorPoint = CadShapeAnchor.Center)
         {
             this.text = text;
             size = textFormat.FontSize;
-            origin = initialPosition;
             layout = new TextLayout(text, textFormat, float.MaxValue, float.MaxValue);
+            anchor = anchorPoint;
+            origin = initialPosition;
+
+            switch (anchor)
+            {
+                case CadShapeAnchor.Left:
+                    boundingBox = Rectangle.FromXYWH(initialPosition.X, initialPosition.Y - layout.Metrics.Height / 2, layout.Metrics.Width, layout.Metrics.Height);
+                    break;
+                case CadShapeAnchor.Center:
+                    boundingBox = Rectangle.FromXYWH(initialPosition.X - layout.Metrics.Width / 2, initialPosition.Y - layout.Metrics.Height / 2, layout.Metrics.Width, layout.Metrics.Height);
+                    break;
+                case CadShapeAnchor.Right:
+                    break;
+            }
+
             moving = true;
         }
 
         public override bool Contained(Rectangle inReal)
         {
-            var metrics = layout.Metrics;
-            return inReal.Contains(origin) && inReal.Contains(new Point(origin.X + metrics.Width, origin.Y + metrics.Height));
+            return inReal.Contains(boundingBox.TopLeft) && inReal.Contains(boundingBox.BottomRight);
         }
 
         public override bool Contains(Point inReal, float threshold)
         {
-            var testPoint = new Point(inReal.X - origin.X, inReal.Y - origin.Y);
-            var hitMetrics = layout.HitTestPoint(testPoint.X, testPoint.Y, out bool isTrailingHit, out bool isInside);
-            return isInside;
+            return boundingBox.Contains(inReal);
         }
 
         public override void Move(Point moveAmount)
         {
             origin = new Point(origin.X + moveAmount.X, origin.Y + moveAmount.Y);
+            boundingBox = boundingBox.Move(moveAmount.X, moveAmount.Y);
         }
 
-        public override void OnDraw(Context context, Brush toolBrush)
+        public override void OnDraw(Context context, SolidColorBrush toolBrush)
         {
-            context.DrawTextLayout(layout, origin, toolBrush);
+            var drawPoint = origin;
+
+            switch (anchor)
+            {
+                case CadShapeAnchor.Left:
+                    drawPoint = new Point(origin.X, origin.Y - layout.Metrics.Height / 2);
+                    break;
+                case CadShapeAnchor.Center:
+                    drawPoint = new Point(origin.X - layout.Metrics.Width / 2, origin.Y - layout.Metrics.Height / 2);
+                    break;
+                case CadShapeAnchor.Right:
+                    break;
+            }
+
+            context.DrawTextLayout(layout, drawPoint, toolBrush);
+
+            toolBrush.Color = new Color(0xFF68768A);
+            context.DrawRectangle(boundingBox, toolBrush, 0.05f);
         }
 
         public override bool OnMouseDown(Point mousePositionInReal)
@@ -426,10 +477,24 @@ namespace KodoCAD
         public override void OnMouseMove(Point mousePositionInReal)
         {
             if (moving)
+            {
                 origin = mousePositionInReal;
+
+                switch (anchor)
+                {
+                    case CadShapeAnchor.Left:
+                        boundingBox = Rectangle.FromXYWH(origin.X, origin.Y - layout.Metrics.Height / 2, layout.Metrics.Width, layout.Metrics.Height);
+                        break;
+                    case CadShapeAnchor.Center:
+                        boundingBox = Rectangle.FromXYWH(origin.X - layout.Metrics.Width / 2, origin.Y - layout.Metrics.Height / 2, layout.Metrics.Width, layout.Metrics.Height);
+                        break;
+                    case CadShapeAnchor.Right:
+                        break;
+                }
+            }
         }
 
-        public override string ToOutput()
+        public override JsonNode ToOutput()
         {
             throw new NotImplementedException();
         }
@@ -440,7 +505,7 @@ namespace KodoCAD
         }
     }
 
-    class CADShapeCircle : CADShape
+    class CadShapeCircle : CadShape
     {
         public override Point Origin => throw new NotImplementedException();
 
@@ -459,7 +524,7 @@ namespace KodoCAD
             throw new NotImplementedException();
         }
 
-        public override void OnDraw(Context context, Brush toolBrush)
+        public override void OnDraw(Context context, SolidColorBrush toolBrush)
         {
             throw new NotImplementedException();
         }
@@ -474,7 +539,7 @@ namespace KodoCAD
             throw new NotImplementedException();
         }
 
-        public override string ToOutput()
+        public override JsonNode ToOutput()
         {
             throw new NotImplementedException();
         }

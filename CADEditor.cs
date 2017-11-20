@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using Kodo.Graphics;
 using Kodo.Graphics.Style;
 
-namespace KodoCAD
+namespace KodoCad
 {
     enum GridMode { None, Lines, Points }
     enum SnapMode { Fine, Coarse }
@@ -16,38 +16,340 @@ namespace KodoCAD
     enum ToolMode { Select, Move, Line, Rectangle, Circle, Text, Pin }
     enum ToolState { None, Armed, Editing }
 
-    delegate void ShapeEditHandler(Set<CADShape> shape);
+    delegate void ShapeEditHandler(Set<CadShape> shape);
 
-    class CADEditor : Control
+    interface ICadEditorEditComponent
     {
+        Rectangle BoundingBox { get; }
+        void OnKey(Key key);
+        void OnCharacter(char c);
+        void OnMouseDown();
+        void OnMouseContained(bool contained);
+    }
+
+    class CadEditorTextBox : ICadEditorEditComponent
+    {
+        bool focused;
+        string text = string.Empty;
+        Rectangle box;
+        bool allowLetters = true;
+
+        TextFormat fmt;
+
+        int textCursor;
+
+        public bool Focused => focused;
+
+        public bool AllowLetters { get => allowLetters; set => allowLetters = value; }
+
+        public Rectangle Box { get => box; set => box = value; }
+
+        public string Text
+        {
+            get { return text; }
+            set
+            {
+                if (string.IsNullOrEmpty(value))
+                    value = string.Empty;
+
+                if (text != value)
+                {
+                    text = value;
+                    textCursor = text.Length;
+                }
+            }
+        }
+
+        public Rectangle BoundingBox => box;
+
+        public CadEditorTextBox()
+        {
+            fmt = new TextFormat("Nunito", 14);
+        }
+
+        public void Focus(bool focus)
+        {
+            if (focus)
+            {
+                focused = true;
+            }
+            else
+            {
+                focused = false;
+            }
+        }
+
+        public void OnKey(Key key)
+        {
+            switch (key)
+            {
+                case Key.Home:
+                    textCursor = 0;
+                    break;
+                case Key.End:
+                    textCursor = text.Length;
+                    break;
+                case Key.Back:
+                case Key.Delete:
+                    if (text.Length > 0)
+                    {
+                        int toRemove = textCursor - 1;
+
+                        if (key == Key.Delete)
+                            toRemove++;
+
+                        if (toRemove < 0)
+                            break;
+                        if (toRemove >= text.Length)
+                            toRemove = text.Length - 1;
+
+                        text = text.Remove(toRemove, 1);
+
+                        if (key == Key.Back)
+                            textCursor--;
+
+                        textCursor = CadMath.Clamp(textCursor, 0, text.Length);
+                    }
+                    break;
+                case Key.ArrowLeft:
+                    textCursor = CadMath.Clamp(textCursor - 1, 0, text.Length);
+                    break;
+                case Key.ArrowRight:
+                    textCursor = CadMath.Clamp(textCursor + 1, 0, text.Length);
+                    break;
+            }
+        }
+
+        public void OnCharacter(char c)
+        {
+            if (AllowLetters)
+            {
+                if ((char.IsLetterOrDigit(c) || char.IsPunctuation(c) || char.IsWhiteSpace(c)) && !char.IsControl(c))
+                {
+                    text = text.Insert(textCursor, c.ToString());
+                    textCursor = CadMath.Clamp(textCursor + 1, 0, text.Length);
+                }
+            }
+            else
+            {
+                if (char.IsDigit(c) || c == '.')
+                {
+                    text = text.Insert(textCursor, c.ToString());
+                    textCursor = CadMath.Clamp(textCursor + 1, 0, text.Length);
+                }
+            }
+        }
+
+        public void OnDraw(Context context, SolidColorBrush brush)
+        {
+            brush.Color = focused ? new Color(0xFFEAF4FC) : new Color(0xFFFFFFFF);
+            context.FillRectangle(box, brush);
+            brush.Color = new Color(0xFFEAEAEA);
+            context.DrawRectangle(box, brush, 1);
+
+            brush.Color = new Color(0xFF151A22);
+
+            using (var layout = new TextLayout(text, fmt, box.Dimensions))
+            {
+                context.DrawTextLayout(layout, box.TopLeft, brush);
+
+                if (focused)
+                {
+                    brush.Color = new Color(0xFF3e7cbf);
+
+                    var textCursorPosition = layout.Metrics.WidthIncludingTrailingWhitespace;
+
+                    if (textCursor < text.Length)
+                    {
+                        using (var testLayout = new TextLayout(text.Substring(0, textCursor), fmt, box.Dimensions))
+                        {
+                            textCursorPosition = testLayout.Metrics.WidthIncludingTrailingWhitespace;
+                        }
+                    }
+
+                    context.DrawLine(new Point(box.Left + textCursorPosition, box.Top + (box.Height + 5 - layout.Metrics.Height / 2)), new Point(box.Left + textCursorPosition, box.Bottom - (box.Height + 5 - layout.Metrics.Height / 2)), brush, 1);
+                }
+            }
+        }
+
+        public void OnMouseDown()
+        {
+            Focus(true);
+        }
+
+        public void OnMouseContained(bool contained)
+        {
+            if (!contained)
+            {
+                Focus(false);
+            }
+        }
+    }
+
+    class CadEditorEditPin : CadEditorEdit
+    {
+        protected override Size BoxSize => throw new NotImplementedException();
+
+        protected override List<ICadEditorEditComponent> Components => throw new NotImplementedException();
+    }
+
+    class CadEditorEditText : CadEditorEdit
+    {
+        CadEditorTextBox boxOfText;
+        CadEditorTextBox boxOfSize;
+
+        List<ICadEditorEditComponent> components = new List<ICadEditorEditComponent>();
+
+        protected override Size BoxSize => new Size(300, 120);
+
+        protected override List<ICadEditorEditComponent> Components => components;
+
+        public CadEditorEditText(CadShapeText textShape)
+        {
+            boxOfText = new CadEditorTextBox();
+            boxOfSize = new CadEditorTextBox();
+
+            boxOfText.Box = Rectangle.FromXYWH(0, 0, 250, 30);
+            boxOfSize.Box = Rectangle.FromXYWH(0, 30, 250, 30);
+
+            components.Add(boxOfText);
+            components.Add(boxOfSize);
+
+            boxOfText.Text = textShape.Text;
+            boxOfSize.Text = textShape.Size.ToString();
+        }
+
+        public CadEditorEditText(Set<CadShapeText> texts)
+        {
+            boxOfText = new CadEditorTextBox();
+            boxOfSize = new CadEditorTextBox();
+
+            boxOfText.Box = Rectangle.FromXYWH(0, 0, 250, 30);
+            boxOfSize.Box = Rectangle.FromXYWH(0, 30, 250, 30);
+
+            components.Add(boxOfText);
+            components.Add(boxOfSize);
+
+            if (texts.Count == 1)
+            {
+                var first = texts.First();
+                boxOfText.Text = first.Text;
+                boxOfSize.Text = first.Size.ToString();
+            }
+            else
+            {
+
+            }
+        }
+
+        public override void Draw(Point location, Context context, SolidColorBrush brush, Color background, Color outline)
+        {
+            base.Draw(location, context, brush, background, outline);
+
+            boxOfText.Box = Rectangle.FromXYWH(location.X, location.Y, 250, 30);
+            boxOfSize.Box = Rectangle.FromXYWH(location.X, location.Y + 30, 250, 30);
+
+            boxOfText.OnDraw(context, brush);
+            boxOfSize.OnDraw(context, brush);
+        }
+    }
+
+    abstract class CadEditorEdit
+    {
+        abstract protected List<ICadEditorEditComponent> Components { get; }
+        abstract protected Size BoxSize { get; }
+
+        Rectangle boundingBox;
+
+        public virtual void OnKey(Key key)
+        {
+
+        }
+
+        public virtual void OnCharacter(char c)
+        {
+
+        }
+
+        public virtual void OnMouseDown()
+        {
+
+        }
+
+        public virtual void OnMouseMove()
+        {
+
+        }
+
+        public void Show()
+        {
+
+        }
+
+        public virtual void Draw(Point location, Context context, SolidColorBrush brush, Color background, Color outline)
+        {
+            var boxSize = BoxSize;
+
+            var geometry = new PathGeometry();
+
+            using (var sink = geometry.Open())
+            {
+                sink.BeginFigure(location, FigureBegin.Filled);
+                var lastPoint = location;
+                sink.AddLine(lastPoint = new Point(lastPoint.X - 5, lastPoint.Y + 5));
+                sink.AddLine(lastPoint = new Point(lastPoint.X - 10, lastPoint.Y + 0));
+                sink.AddLine(lastPoint = new Point(lastPoint.X - 0, lastPoint.Y + boxSize.Height));
+                sink.AddLine(lastPoint = new Point(lastPoint.X + boxSize.Width, lastPoint.Y + 0));
+                sink.AddLine(lastPoint = new Point(lastPoint.X + 0, lastPoint.Y - boxSize.Height));
+
+                sink.AddLine(lastPoint = new Point(lastPoint.X - (boxSize.Width - 10 - 5 - 5), lastPoint.Y - 0));
+
+                sink.AddLine(lastPoint = new Point(location.X, location.Y));
+
+                sink.EndFigure(FigureEnd.Closed);
+                sink.Close();
+            }
+
+            brush.Color = new Color(0xFFC0CBCE);
+            context.FillGeometry(geometry, brush);
+            brush.Color = new Color(0xFF68768A);
+            context.DrawGeometry(geometry, brush, 2);
+        }
+    }
+
+    class CadEditor : Control
+    {
+        CadEditorEdit editor;
+
         public event ShapeEditHandler OnShapeEdit;
 
-        Color gridOutlineColor = Color.FromAColor(0.5f, Color.GhostWhite);
+        static readonly Color basicForegroundColor = new Color(0xFFECF1F3);
 
-        Color gridlineMajorColor = Color.FromAColor(0.2f, Color.GhostWhite);
-        Color gridlineMinorColor = Color.FromAColor(0.05f, Color.GhostWhite);
+        Color gridOutlineColor = Color.FromAColor(0.5f, basicForegroundColor);
 
-        //Color gridlineMajorColor = Color.FromAColor(0.2f, new Color(0xFF748496));
-        //Color gridlineMinorColor = Color.FromAColor(0.05f, new Color(0xFF748496));
+        Color gridlineMajorColor = Color.FromAColor(0.15f, basicForegroundColor);
+        Color gridlineMinorColor = Color.FromAColor(0.05f, basicForegroundColor);
 
-        Color griddotMajorColor = Color.FromAColor(0.4f, Color.GhostWhite);
-        Color griddotMinorColor = Color.FromAColor(0.1f, Color.GhostWhite);
+        Color griddotMajorColor = Color.FromAColor(0.4f, basicForegroundColor);
+        Color griddotMinorColor = Color.FromAColor(0.1f, basicForegroundColor);
 
         Color crosshairCursorColor = Color.GhostWhite;
         Color crosshairRelativeColor = Color.GhostWhite;
 
-        Color geometryColor = Color.IndianRed;
+        Color geometryColor = new Color(0xFFB4C0C3);
 
         float crosshairWidth = 1f;
         float crosshairHeight = 20f;
 
-        Set<CADShape> shapesSelected = new Set<CADShape>();
+        bool drawCenterAxes;
+
+        Set<CadShape> shapesSelected = new Set<CadShape>();
         bool multiSelected;
-        List<CADShape> shapes = new List<CADShape>();
-        CADShape shapeInEditing;
+        List<CadShape> shapes = new List<CadShape>();
+        CadShape shapeInEditing;
 
         GridMode gridMode = GridMode.Lines;
-        SnapMode snapMode = SnapMode.Coarse;
+        SnapMode snapMode = SnapMode.Fine;
         ToolMode toolMode = ToolMode.Select;
         ToolState toolState = ToolState.None;
 
@@ -116,14 +418,14 @@ namespace KodoCAD
             }
         }
 
-        public void ReplaceShape(CADShape shapeOriginal, CADShape shapeNew)
+        public void ReplaceShape(CadShape shapeOriginal, CadShape shapeNew)
         {
             shapes.Remove(shapeOriginal);
             shapes.Add(shapeNew);
             Update();
         }
 
-        public CADEditor(Window window)
+        public CadEditor(Window window)
             : base(window)
         {
             /*using (var file = new System.IO.StreamReader(@"C:\Users\Jay\SkyDrive\AMK\Huhtinen\PSU+AMP\PSU+AMP.lib"))
@@ -180,10 +482,7 @@ namespace KodoCAD
         {
             base.OnMouseDown(mouse);
 
-            //if (mouse.Button == MouseButton.Middle)
-            {
-                mousePositionWhenPressed = mouse.Position;
-            }
+            mousePositionWhenPressed = mouse.Position;
 
             if (mouse.Button == MouseButton.Left && toolMode == ToolMode.Select)
             {
@@ -214,14 +513,14 @@ namespace KodoCAD
                     switch (toolMode)
                     {
                         case ToolMode.Line:
-                            shapeInEditing = new CADShapeLine();
+                            shapeInEditing = new CadShapeLine();
                             toolState = ToolState.Armed;
                             shapes.Add(shapeInEditing);
 
                             Update();
                             break;
                         case ToolMode.Rectangle:
-                            shapeInEditing = new CADShapeRectangle();
+                            shapeInEditing = new CadShapeRectangle();
                             toolState = ToolState.Armed;
                             shapes.Add(shapeInEditing);
 
@@ -250,7 +549,7 @@ namespace KodoCAD
             mousePositionOnScreen = mouse.Position;
 
             var zoomFactorIndexOld = zoomFactorIndex;
-            zoomFactorIndex = CADMath.Clamp(zoomFactorIndex + (mouse.WheelDelta > 0 ? 1 : -1), 0, zoomFactors.Length - 1);
+            zoomFactorIndex = CadMath.Clamp(zoomFactorIndex + (mouse.WheelDelta > 0 ? 1 : -1), 0, zoomFactors.Length - 1);
             zoomFactor = zoomFactors[zoomFactorIndex];
 
             if (zoomFactorIndex != zoomFactorIndexOld)
@@ -270,7 +569,7 @@ namespace KodoCAD
                 var unitsNewY = unitsOldY * zoomRatio;
                 var unitsDiffY = (unitsOldY - unitsNewY) / snapUnitStep;
 
-                gridSize = new Size(CADMath.Round(gridSize.Width * zoomRatio, 0), CADMath.Round(gridSize.Height * zoomRatio, 0));
+                gridSize = new Size(CadMath.Round(gridSize.Width * zoomRatio, 0), CadMath.Round(gridSize.Height * zoomRatio, 0));
 
                 origin = new Point(origin.X + snapStep.X * unitsDiffX, origin.Y + snapStep.Y * unitsDiffY);
             }
@@ -383,8 +682,23 @@ namespace KodoCAD
             }
         }
 
+        protected override void OnCharacter(char c)
+        {
+            if (editor != null)
+            {
+                editor.OnCharacter(c);
+                return;
+            }
+        }
+
         protected override void OnKeyDown(Key key)
         {
+            if (editor != null)
+            {
+                editor.OnKey(key);
+                return;
+            }
+
             if (key == Key.Escape)
             {
                 if (shapeInEditing != null)
@@ -394,7 +708,7 @@ namespace KodoCAD
                         shapes.Remove(shapeInEditing);
                         shapeInEditing = null;
 
-                        shapeInEditing = new CADShapeLine();
+                        shapeInEditing = new CadShapeLine();
 
                         toolState = ToolState.Armed;
 
@@ -429,6 +743,21 @@ namespace KodoCAD
             }
             else if (key == Key.E)
             {
+                /*if (shapesSelected.Count == 1)
+                {
+                    var shape = shapes.First();
+
+                    if (shape is CadShapeText textShape)
+                    {
+                        editor = new CadEditorEditText(textShape);
+                        Update();
+                    }
+                }
+                else
+                {
+
+                }*/
+
                 if (shapesSelected.Count > 0)
                 {
                     OnShapeEdit?.Invoke(shapesSelected);
@@ -439,11 +768,11 @@ namespace KodoCAD
                 snapMode = snapMode == SnapMode.Fine ? SnapMode.Coarse : SnapMode.Fine;
                 Update();
             }
-            /*else if (key == Key.O && Keyboard.IsDown(Key.ShiftLeft))
+            else if (key == Key.C && Keyboard.IsDown(Key.ShiftLeft))
             {
-                originMode = originMode == OriginMode.Absolute ? OriginMode.Center : OriginMode.Absolute;
+                drawCenterAxes = !drawCenterAxes;
                 Update();
-            }*/
+            }
             else if (key == Key.G && Keyboard.IsDown(Key.ShiftLeft))
             {
                 switch (gridMode)
@@ -478,8 +807,8 @@ namespace KodoCAD
 
                 var rel = SelectRelative(mousePositionRelativeToOriginRealSnapped, mousePositionRelativeToOriginCenterRealSnapped);
 
-                var textFormat = new TextFormat("Montserrat", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 1, "en-US");
-                shapeInEditing = new CADShapeText("CADShapeText", textFormat, rel);
+                var textFormat = new TextFormat("Nunito", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 1, "en-US");
+                shapeInEditing = new CadShapeText("CadShapeText", textFormat, rel);
                 shapes.Add(shapeInEditing);
                 Refresh();
             }
@@ -487,8 +816,8 @@ namespace KodoCAD
             {
                 toolMode = ToolMode.Pin;
                 var rel = SelectRelative(mousePositionRelativeToOriginRealSnapped, mousePositionRelativeToOriginCenterRealSnapped);
-                var textFormat = new TextFormat("Montserrat", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 1, "en-US");
-                shapeInEditing = new CADShapePin("CADShapePin", 1, 5, PinOrientation.Left, textFormat, textFormat, rel);
+                var textFormat = new TextFormat("Nunito", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 1, "en-US");
+                shapeInEditing = new CadShapePin("CadShapePin", 1, 5, PinOrientation.Left, textFormat, textFormat, rel);
                 toolState = ToolState.Armed;
 
                 shapes.Add(shapeInEditing);
@@ -499,7 +828,7 @@ namespace KodoCAD
             {
                 toolMode = ToolMode.Rectangle;
 
-                shapeInEditing = new CADShapeRectangle();
+                shapeInEditing = new CadShapeRectangle();
                 toolState = ToolState.Armed;
 
                 shapes.Add(shapeInEditing);
@@ -510,7 +839,7 @@ namespace KodoCAD
             {
                 toolMode = ToolMode.Line;
 
-                shapeInEditing = new CADShapeLine();
+                shapeInEditing = new CadShapeLine();
                 toolState = ToolState.Armed;
 
                 shapes.Add(shapeInEditing);
@@ -558,12 +887,12 @@ namespace KodoCAD
 
         Point RealToGrid(Point real)
         {
-            return CADMath.Transform(real, matrixRealToGrid);
+            return CadMath.Transform(real, matrixRealToGrid);
         }
 
         Point GridToReal(Point grid)
         {
-            return CADMath.Transform(grid, matrixGridToReal);
+            return CadMath.Transform(grid, matrixGridToReal);
         }
 
         Point RealToScreen(Point real)
@@ -588,17 +917,9 @@ namespace KodoCAD
 
         protected override void OnLoad(Context context)
         {
-            textFormatTest = new TextFormat("Source Code Pro", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 12, "en-US");
-            textFormatTest.TextAlignment = TextAlignment.Leading;
-            textFormatTest.ParagraphAlignment = ParagraphAlignment.Near;
-
-            textFormatBig = new TextFormat("Source Code Pro", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 16, "en-US");
-            textFormatBig.TextAlignment = TextAlignment.Leading;
-            textFormatBig.ParagraphAlignment = ParagraphAlignment.Near;
-
-            textFormatSmall = new TextFormat("Source Code Pro", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 12, "en-US");
-            textFormatSmall.TextAlignment = TextAlignment.Leading;
-            textFormatSmall.ParagraphAlignment = ParagraphAlignment.Near;
+            textFormatTest = new TextFormat("Roboto Mono", 12);
+            textFormatBig = new TextFormat("Roboto Mono", 16);
+            textFormatSmall = new TextFormat("Roboto Mono", 12);
 
             dpi = context.GetDPI();
 
@@ -610,11 +931,11 @@ namespace KodoCAD
         {
             var area = new Rectangle(Area.Dimensions);
 
-            origin = CADMath.Clamp(
+            origin = CadMath.Clamp(
                 origin,
                 new Point(-(origin.X + gridStepMinor.X * gridSize.Width) + (area.Width * 6 / 4), -(origin.Y + gridStepMinor.Y * gridSize.Height) + (area.Height * 6 / 4)),
                 new Point(area.Width / 4, area.Height / 4));
-            originOnReality = CADMath.Transform(origin, matrixGridToReal);
+            originOnReality = CadMath.Transform(origin, matrixGridToReal);
 
             //
             // Calculate tranformation matrices.
@@ -647,9 +968,9 @@ namespace KodoCAD
                                                (float)Math.Round(mousePositionRelativeToOriginMovable.Y / snapStep.Y));
 
             mousePositionRelativeToOriginReal = GridToReal(mousePositionRelativeToOrigin);
-            mousePositionRelativeToOriginRealSnapped = new Point(CADMath.Round(linesFromOrigin.X * snapUnitStep * zoomFactor), CADMath.Round(linesFromOrigin.Y * snapUnitStep * zoomFactor));
-            mousePositionRelativeToOriginCenterRealSnapped = new Point(CADMath.Round(linesFromOriginCenter.X * snapUnitStep * zoomFactor), CADMath.Round(linesFromOriginCenter.Y * snapUnitStep * zoomFactor));
-            mousePositionRelativeToOriginMovableRealSnapped = new Point(CADMath.Round(linesFromOriginMovable.X * snapUnitStep * zoomFactor), CADMath.Round(linesFromOriginMovable.Y * snapUnitStep * zoomFactor));
+            mousePositionRelativeToOriginRealSnapped = new Point(CadMath.Round(linesFromOrigin.X * snapUnitStep * zoomFactor), CadMath.Round(linesFromOrigin.Y * snapUnitStep * zoomFactor));
+            mousePositionRelativeToOriginCenterRealSnapped = new Point(CadMath.Round(linesFromOriginCenter.X * snapUnitStep * zoomFactor), CadMath.Round(linesFromOriginCenter.Y * snapUnitStep * zoomFactor));
+            mousePositionRelativeToOriginMovableRealSnapped = new Point(CadMath.Round(linesFromOriginMovable.X * snapUnitStep * zoomFactor), CadMath.Round(linesFromOriginMovable.Y * snapUnitStep * zoomFactor));
         }
 
         protected override void OnDraw(Context context)
@@ -673,8 +994,8 @@ namespace KodoCAD
             {
                 SharedBrush.Color = gridlineMajorColor;
 
-                var upperBound = CADMath.Clamp((int)Math.Floor((area.Right - origin.X) / gridStepMajor.X), 0, gridLinesMajorX);
-                var lowerBound = CADMath.Clamp((int)Math.Floor(-(origin.X / gridStepMajor.X)), 0, upperBound);
+                var upperBound = CadMath.Clamp((int)Math.Floor((area.Right - origin.X) / gridStepMajor.X), 0, gridLinesMajorX);
+                var lowerBound = CadMath.Clamp((int)Math.Floor(-(origin.X / gridStepMajor.X)), 0, upperBound);
 
                 for (var i = lowerBound + 1; i <= upperBound; i++)
                 {
@@ -684,8 +1005,8 @@ namespace KodoCAD
                     context.FillRectangle(Rectangle.FromLTRB(left - 0.5f, top, left + 0.5f, bottom), SharedBrush);
                 }
 
-                upperBound = CADMath.Clamp((int)Math.Floor((area.Bottom - origin.Y) / gridStepMajor.Y), 0, gridLinesMajorY);
-                lowerBound = CADMath.Clamp((int)Math.Floor(-(origin.Y / gridStepMajor.Y)), 0, upperBound);
+                upperBound = CadMath.Clamp((int)Math.Floor((area.Bottom - origin.Y) / gridStepMajor.Y), 0, gridLinesMajorY);
+                lowerBound = CadMath.Clamp((int)Math.Floor(-(origin.Y / gridStepMajor.Y)), 0, upperBound);
 
                 for (var i = lowerBound + 1; i <= upperBound; i++)
                 {
@@ -699,8 +1020,8 @@ namespace KodoCAD
                 {
                     SharedBrush.Color = gridlineMinorColor;
 
-                    upperBound = CADMath.Clamp((int)Math.Ceiling((area.Right - origin.X) / gridStepMinor.X), 0, gridLinesMinorX);
-                    lowerBound = CADMath.Clamp((int)Math.Ceiling(-(origin.X / gridStepMinor.X)), 0, upperBound);
+                    upperBound = CadMath.Clamp((int)Math.Ceiling((area.Right - origin.X) / gridStepMinor.X), 0, gridLinesMinorX);
+                    lowerBound = CadMath.Clamp((int)Math.Ceiling(-(origin.X / gridStepMinor.X)), 0, upperBound);
 
                     for (var i = lowerBound + 1; i < upperBound; i++)
                     {
@@ -710,8 +1031,8 @@ namespace KodoCAD
                         context.FillRectangle(Rectangle.FromLTRB(left - 0.5f, top, left + 0.5f, bottom), SharedBrush);
                     }
 
-                    upperBound = CADMath.Clamp((int)Math.Ceiling((area.Bottom - origin.Y) / gridStepMinor.Y), 0, gridLinesMinorY);
-                    lowerBound = CADMath.Clamp((int)Math.Ceiling(-(origin.Y / gridStepMinor.Y)), 0, upperBound);
+                    upperBound = CadMath.Clamp((int)Math.Ceiling((area.Bottom - origin.Y) / gridStepMinor.Y), 0, gridLinesMinorY);
+                    lowerBound = CadMath.Clamp((int)Math.Ceiling(-(origin.Y / gridStepMinor.Y)), 0, upperBound);
 
                     for (var i = lowerBound + 1; i < upperBound; i++)
                     {
@@ -726,10 +1047,10 @@ namespace KodoCAD
             {
                 SharedBrush.Color = griddotMajorColor;
 
-                var upperBoundX = CADMath.Clamp((int)Math.Floor((area.Right - origin.X) / gridStepMajor.X), 0, gridLinesMajorX);
-                var lowerBoundX = CADMath.Clamp((int)Math.Floor(-(origin.X / gridStepMajor.X)), 0, upperBoundX);
-                var upperBoundY = CADMath.Clamp((int)Math.Floor((area.Bottom - origin.Y) / gridStepMajor.Y), 0, gridLinesMajorY);
-                var lowerBoundY = CADMath.Clamp((int)Math.Floor(-(origin.Y / gridStepMajor.Y)), 0, upperBoundY);
+                var upperBoundX = CadMath.Clamp((int)Math.Floor((area.Right - origin.X) / gridStepMajor.X), 0, gridLinesMajorX);
+                var lowerBoundX = CadMath.Clamp((int)Math.Floor(-(origin.X / gridStepMajor.X)), 0, upperBoundX);
+                var upperBoundY = CadMath.Clamp((int)Math.Floor((area.Bottom - origin.Y) / gridStepMajor.Y), 0, gridLinesMajorY);
+                var lowerBoundY = CadMath.Clamp((int)Math.Floor(-(origin.Y / gridStepMajor.Y)), 0, upperBoundY);
 
                 for (var i = lowerBoundX + 1; i <= upperBoundX; i++)
                 {
@@ -747,10 +1068,10 @@ namespace KodoCAD
                 {
                     SharedBrush.Color = griddotMinorColor;
 
-                    upperBoundX = CADMath.Clamp((int)Math.Ceiling((area.Right - origin.X) / gridStepMinor.X), 0, gridLinesMinorX);
-                    lowerBoundX = CADMath.Clamp((int)Math.Ceiling(-(origin.X / gridStepMinor.X)), 0, upperBoundX);
-                    upperBoundY = CADMath.Clamp((int)Math.Ceiling((area.Bottom - origin.Y) / gridStepMinor.Y), 0, gridLinesMinorY);
-                    lowerBoundY = CADMath.Clamp((int)Math.Ceiling(-(origin.Y / gridStepMinor.Y)), 0, upperBoundY);
+                    upperBoundX = CadMath.Clamp((int)Math.Ceiling((area.Right - origin.X) / gridStepMinor.X), 0, gridLinesMinorX);
+                    lowerBoundX = CadMath.Clamp((int)Math.Ceiling(-(origin.X / gridStepMinor.X)), 0, upperBoundX);
+                    upperBoundY = CadMath.Clamp((int)Math.Ceiling((area.Bottom - origin.Y) / gridStepMinor.Y), 0, gridLinesMinorY);
+                    lowerBoundY = CadMath.Clamp((int)Math.Ceiling(-(origin.Y / gridStepMinor.Y)), 0, upperBoundY);
 
                     for (var i = lowerBoundX + 1; i < upperBoundX; i++)
                     {
@@ -771,10 +1092,10 @@ namespace KodoCAD
             SharedBrush.Opacity = 1;
             SharedBrush.Color = Color.LightSkyBlue;
             context.DrawText(
-                $"grid {CADMath.ToString(CADMath.Round(zoomFactor * gridStepUnitsMinor))} : {CADMath.ToString(CADMath.Round(zoomFactor * gridStepUnitsMajor))}\n" +
-                $"abs  x:{CADMath.ToString(mousePositionRelativeToOriginRealSnapped.X)} y:{CADMath.ToString(mousePositionRelativeToOriginRealSnapped.Y)}\n" +
-                $"cen  x:{CADMath.ToString(mousePositionRelativeToOriginCenterRealSnapped.X)} y:{CADMath.ToString(mousePositionRelativeToOriginCenterRealSnapped.Y)}\n" +
-                $"rel  x:{CADMath.ToString(mousePositionRelativeToOriginMovableRealSnapped.X)} y:{CADMath.ToString(mousePositionRelativeToOriginMovableRealSnapped.Y)}\n" +
+                $"grid {CadMath.ToString(CadMath.Round(zoomFactor * gridStepUnitsMinor))} : {CadMath.ToString(CadMath.Round(zoomFactor * gridStepUnitsMajor))}\n" +
+                $"abs  x:{CadMath.ToString(mousePositionRelativeToOriginRealSnapped.X)} y:{CadMath.ToString(mousePositionRelativeToOriginRealSnapped.Y)}\n" +
+                $"cen  x:{CadMath.ToString(mousePositionRelativeToOriginCenterRealSnapped.X)} y:{CadMath.ToString(mousePositionRelativeToOriginCenterRealSnapped.Y)}\n" +
+                $"rel  x:{CadMath.ToString(mousePositionRelativeToOriginMovableRealSnapped.X)} y:{CadMath.ToString(mousePositionRelativeToOriginMovableRealSnapped.Y)}\n" +
                 $"tool {toolMode} : {toolState}",
                 textFormatTest,
                 area,
@@ -797,7 +1118,7 @@ namespace KodoCAD
 
                 if (shapesSelected.Contains(shape))
                 {
-                    SharedBrush.Color = Color.SpringGreen;
+                    SharedBrush.Color = new Color(0xFFF3F3F4);
                     shape.OnDraw(context, SharedBrush);
                     SharedBrush.Color = geometryColor;
                 }
@@ -845,10 +1166,15 @@ namespace KodoCAD
             // Draw the center axis
             //
 
-            //if (originMode == OriginMode.Center)
+            if (editor != null)
+            {
+                editor.Draw(originCenter, context, SharedBrush, new Color(), new Color());
+            }
+
+            if (drawCenterAxes)
             {
                 SharedBrush.Opacity = 1;
-                SharedBrush.Color = Color.FromAColor(0.5f, Color.LightSkyBlue);
+                SharedBrush.Color = Color.FromAColor(0.5f, basicForegroundColor);
 
                 context.FillRectangle(Rectangle.FromLTRB(
                     originCenter.X - 0.5f,
@@ -861,6 +1187,10 @@ namespace KodoCAD
                      originCenter.Y - 0.5f,
                      Math.Min(area.Right, origin.X + gridStepMajor.X * gridLinesMajorX),
                      originCenter.Y + 0.5f), SharedBrush);
+
+                /*context.AntialiasMode = AntialiasMode.PerPrimitive;
+                new CadEditorEdit().Draw(originCenter, context, SharedBrush, Style.Colors.Background, new Color(0xFF6AA332));
+                context.AntialiasMode = AntialiasMode.Aliased;*/
             }
 
             //
@@ -891,8 +1221,8 @@ namespace KodoCAD
             var p = mousePositionRelativeToOriginMovableRealSnapped;
             var layoutStr =
                 $"{relativeStr} " +
-                $"dX {CADMath.ToString2(p.X)}" +
-                $" dY {CADMath.ToString2(p.Y)}";
+                $"dX {CadMath.ToString2(p.X)}" +
+                $" dY {CadMath.ToString2(p.Y)}";
             using (var layout = new TextLayout(layoutStr, textFormatBig, infoRect.Dimensions))
             {
                 //layout.SetFontSize(10, new TextRange(layoutStr.IndexOf(relativeStr, StringComparison.Ordinal), relativeStr.Length));
