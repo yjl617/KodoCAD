@@ -13,6 +13,19 @@ namespace KodoCad
     {
     }
 
+    public static class CadUtil
+    {
+        public static string Stringify(float value)
+        {
+            return value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        public static string Stringify(int value)
+        {
+            return value.ToString(CultureInfo.InvariantCulture);
+        }
+    }
+
     public static class CadMath
     {
         public static float MillimetersToMils(float millimeters)
@@ -37,6 +50,23 @@ namespace KodoCad
         public static float Distance(Point p1, Point p2)
         {
             return (float)(Math.Sqrt(Math.Pow((p2.X - p1.X), 2) + Math.Pow((p2.Y - p1.Y), 2)));
+        }
+
+        public static Rectangle Rotate(Rectangle rectangle, Point center)
+        {
+            var centerOfRotation = center;
+            var tl = rectangle.TopLeft;
+            var br = rectangle.BottomRight;
+
+            tl = Rotate(tl, centerOfRotation);
+            br = Rotate(br, centerOfRotation);
+
+            return Rectangle.FromLTRB(br.X, tl.Y, tl.X, br.Y);
+        }
+
+        public static Point Rotate(Point point, Point center)
+        {
+            return Matrix3x2.TransformPoint(Matrix3x2.Rotation(90, center), point);
         }
 
         public static Point Transform(Point point, Matrix3x2 matrix)

@@ -21,7 +21,7 @@ namespace KodoCad
         {
             /*var document = new JsonDocument();
             
-            var shape = new CADShapeRectangle(Rectangle.FromXYWH(100, 100, 10, 10));
+            var shape = new CadRectangle(Rectangle.FromXYWH(100, 100, 10, 10));
             document.Append(shape.ToOutput());
 
             document.Write("e:/KodoCAD.js", false, true);*/
@@ -49,7 +49,112 @@ namespace KodoCad
         }
     }
 
-    class CadWindowQuickOptions : Window
+    class CadWindowPinOptions : Window
+    {
+        Button buttonOK;
+        Button buttonCancel;
+
+        Textbox textboxName;
+        Textbox textboxNumber;
+        Textbox textboxSizeOfName;
+        Textbox textboxSizeOfNumber;
+        Textbox textboxLength;
+        Textbox textboxNameOffset;
+
+        Set<CadShape> shapesOriginal;
+        Set<CadShape> shapesNew;
+
+        CadPin shapeOriginal;
+        CadPin shapeNew;
+
+        public event DefaultEventHandler OnClosed;
+
+        public CadPin Shape => shapeNew;
+        public CadPin ShapeOriginal => shapeOriginal;
+
+        public CadWindowPinOptions(WindowManager manager, WindowSettings settings) : base(manager, settings)
+        {
+            buttonOK = new Button(this);
+            buttonOK.Text = "OK";
+            buttonOK.OnClick += OnClickOK;
+
+            buttonCancel = new Button(this);
+            buttonCancel.Text = "Cancel";
+            buttonCancel.OnClick += OnClickCancel;
+
+            textboxName = new Textbox(this);
+            textboxName.Subtle = true;
+            textboxNumber = new Textbox(this);
+            textboxName.Subtle = true;
+
+            textboxLength = new Textbox(this);
+            textboxLength.Subtle = true;
+
+            textboxSizeOfName = new Textbox(this);
+            textboxSizeOfName.Subtle = true;
+            textboxSizeOfNumber = new Textbox(this);
+            textboxSizeOfNumber.Subtle = true;
+
+            textboxNameOffset = new Textbox(this);
+            textboxNameOffset.Subtle = true;
+        }
+
+        protected override void OnUpdate(Context context)
+        {
+            base.OnUpdate(context);
+
+            var clientArea = Client;
+
+            textboxName.Area = Rectangle.FromXYWH(3, 3, 250, 30);
+            textboxNumber.Area = Rectangle.FromXYWH(3, textboxName.Area.Bottom + 10, 250, 30);
+
+            textboxLength.Area = Rectangle.FromXYWH(3, textboxNumber.Area.Bottom + 10, 250, 30);
+
+            textboxSizeOfName.Area = Rectangle.FromXYWH(3, textboxLength.Area.Bottom + 10, 250, 30);
+            textboxSizeOfNumber.Area = Rectangle.FromXYWH(3, textboxSizeOfName.Area.Bottom + 10, 250, 30);
+
+            textboxNameOffset.Area = Rectangle.FromXYWH(3, textboxSizeOfNumber.Area.Bottom + 10, 250, 30);
+
+            buttonOK.Area = Rectangle.FromLTRB(clientArea.Left, textboxNameOffset.Area.Bottom, clientArea.Left + clientArea.Width / 2, clientArea.Bottom);
+            buttonCancel.Area = Rectangle.FromLTRB(clientArea.Right - clientArea.Width / 2, textboxNameOffset.Area.Bottom, clientArea.Right, clientArea.Bottom);
+        }
+
+        public void Show(CadPin textShape)
+        {
+            shapeOriginal = textShape;
+
+            textboxName.Text = shapeOriginal.Name;
+            textboxNumber.Text = shapeOriginal.Number.ToString();
+            textboxLength.Text = shapeOriginal.Length.ToString();
+            textboxSizeOfName.Text = shapeOriginal.SizeOfName.ToString();
+            textboxSizeOfNumber.Text = shapeOriginal.SizeOfNumber.ToString();
+            textboxNameOffset.Text = shapeOriginal.OffsetOfName.ToString();
+
+            Visible = true;
+        }
+
+        public void Hide()
+        {
+            Visible = false;
+            OnClosed?.Invoke();
+        }
+
+        void OnClickOK()
+        {
+            var formatOfName = new TextFormat("Nunito", float.Parse(textboxSizeOfName.Text, CultureInfo.InvariantCulture));
+            var formatOfNumber = new TextFormat("Nunito", float.Parse(textboxSizeOfNumber.Text, CultureInfo.InvariantCulture));
+            shapeNew = new CadPin(textboxName.Text, int.Parse(textboxNumber.Text), float.Parse(textboxLength.Text), formatOfName, formatOfNumber, shapeOriginal.Origin, shapeOriginal);
+            Hide();
+        }
+
+        void OnClickCancel()
+        {
+            shapeNew = shapeOriginal;
+            Hide();
+        }
+    }
+
+    class CadWindowTextOptions : Window
     {
         Button buttonOK;
         Button buttonCancel;
@@ -60,15 +165,15 @@ namespace KodoCad
         Set<CadShape> shapesOriginal;
         Set<CadShape> shapesNew;
 
-        CadShapeText shapeOriginal;
-        CadShapeText shapeNew;
+        CadText shapeOriginal;
+        CadText shapeNew;
 
         public event DefaultEventHandler OnClosed;
 
-        public CadShapeText Shape => shapeNew;
-        public CadShapeText ShapeOriginal => shapeOriginal;
+        public CadText Shape => shapeNew;
+        public CadText ShapeOriginal => shapeOriginal;
 
-        public CadWindowQuickOptions(WindowManager manager, WindowSettings settings) : base(manager, settings)
+        public CadWindowTextOptions(WindowManager manager, WindowSettings settings) : base(manager, settings)
         {
             buttonOK = new Button(this);
             buttonOK.Text = "OK";
@@ -97,7 +202,7 @@ namespace KodoCad
             buttonCancel.Area = Rectangle.FromLTRB(clientArea.Right - clientArea.Width / 2, textboxSize.Area.Bottom, clientArea.Right, clientArea.Bottom);
         }
 
-        public void Show(CadShapeText textShape)
+        public void Show(CadText textShape)
         {
             shapeOriginal = textShape;
 
@@ -116,7 +221,7 @@ namespace KodoCad
         void OnClickOK()
         {
             var textFormat = new TextFormat("Nunito", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, float.Parse(textboxSize.Text, CultureInfo.InvariantCulture), "en-US");
-            shapeNew = new CadShapeText(textboxText.Text, textFormat, shapeOriginal.Origin);
+            shapeNew = new CadText(textboxText.Text, textFormat, shapeOriginal.Origin);
             Hide();
         }
 
@@ -129,7 +234,8 @@ namespace KodoCad
 
     class CadWindow : Window
     {
-        CadWindowQuickOptions quickOptions;
+        CadWindowPinOptions pinOptions;
+        CadWindowTextOptions textOptions;
 
         CadEditor editor;
 
@@ -137,26 +243,23 @@ namespace KodoCad
             : base(manager, settings)
         {
             var textEditorSettings = new WindowSettings();
-            textEditorSettings.Area = Rectangle.FromXYWH(0, 0, 16f * 20, 9f * 20).CenterTo(Area);
+            textEditorSettings.Area = Rectangle.FromXYWH(0, 0, 16f * 20, 9f * 30).CenterTo(Area);
             textEditorSettings.MinimumSize = new Size(0, 0);
             textEditorSettings.Margings = new WindowMargings(3);
             textEditorSettings.NoTitle = true;
             textEditorSettings.ToolWindow = true;
 
-            quickOptions = new CadWindowQuickOptions(manager, textEditorSettings);
-            quickOptions.OnClosed += TextEditor_OnClosed;
-            quickOptions.Visible = false;
+            pinOptions = new CadWindowPinOptions(manager, textEditorSettings);
+            pinOptions.OnClosed += PinEditor_OnClosed;
+            pinOptions.Visible = false;
+            pinOptions.StyleInformation = StyleInformation;
+            pinOptions.Create();
 
-            quickOptions.StyleInformation = new StyleInformation(
-                accent: Color.LightSteelBlue,
-                background: new Color(0xFF151A22),
-                foreground: new Color(0xFFECF1F3),
-                outline: Color.Black,
-                overlay: new Color(0.2, 0.2, 0.2, 0.3),
-                overlayHover: new Color(0.2, 0.6, 0.65, 0.7),
-                overlayPress: new Color(0.2, 0.8, 0.5, 0.5));
-
-            quickOptions.Create();
+            textOptions = new CadWindowTextOptions(manager, textEditorSettings);
+            textOptions.OnClosed += TextEditor_OnClosed;
+            textOptions.Visible = false;
+            textOptions.StyleInformation = StyleInformation;
+            textOptions.Create();
 
             editor = new CadEditor(this);
             editor.OnShapeEdit += Editor_OnShapeEdit;
@@ -164,7 +267,14 @@ namespace KodoCad
 
         void TextEditor_OnClosed()
         {
-            editor.ReplaceShape(quickOptions.ShapeOriginal, quickOptions.Shape);
+            editor.ReplaceShape(textOptions.ShapeOriginal, textOptions.Shape);
+
+            Locked = false;
+        }
+
+        void PinEditor_OnClosed()
+        {
+            editor.ReplaceShape(pinOptions.ShapeOriginal, pinOptions.Shape);
 
             Locked = false;
         }
@@ -175,10 +285,15 @@ namespace KodoCad
             {
                 var shape = shapes.First();
 
-                if (shape is CadShapeText)
+                if (shape is CadText textShape)
                 {
                     Locked = true;
-                    quickOptions.Show(shape as CadShapeText);
+                    textOptions.Show(textShape);
+                }
+                else if (shape is CadPin pinShape)
+                {
+                    Locked = true;
+                    pinOptions.Show(pinShape);
                 }
             }
             else
