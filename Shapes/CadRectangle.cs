@@ -1,51 +1,53 @@
 ﻿using System;
-using System.Globalization;
-using System.Linq;
 
 using Kodo.Json;
 using Kodo.Graphics;
 
 using static KodoCad.CadMath;
-using static KodoCad.CadUtil;
+using static KodoCad.CadUtilities;
 
 namespace KodoCad
 {
     class CadRectangle : CadShape
     {
-        Rectangle rectangle;
-        Rectangle boundingBox;
+        Rectangle rect;
+        Rectangle bound;
 
-        public override Point Origin => rectangle.Center;
+        public override Point Origin => rect.TopLeft;
 
         public CadRectangle()
         {
+            Filled = true;
         }
 
         public CadRectangle(Rectangle r)
         {
-            rectangle = r;
-            boundingBox = rectangle.Inflate(1.1f);
+            Filled = true;
+
+            rect = r;
+            bound = rect.Inflate(1.05f);
         }
 
         public override void OnMouseMove(Point mousePositionInReal)
         {
-            var startPoint = boundingBox.TopLeft;
+            var p0 = bound.TopLeft;
+            var p1 = mousePositionInReal;
 
-            if (mousePositionInReal.X >= startPoint.X && mousePositionInReal.Y >= startPoint.Y)
+            if (p1.X >= p0.X && p1.Y >= p0.Y)
             {
-                rectangle = Rectangle.FromLTRB(startPoint.X, startPoint.Y, mousePositionInReal.X, mousePositionInReal.Y);
+                rect = Rectangle.FromLTRB(p0.X, p0.Y, p1.X, p1.Y);
             }
-            else if (mousePositionInReal.X < startPoint.X && mousePositionInReal.Y >= startPoint.Y)
+            else if (p1.X < p0.X && p1.Y >= p0.Y)
             {
-                rectangle = Rectangle.FromLTRB(mousePositionInReal.X, startPoint.Y, startPoint.X, mousePositionInReal.Y);
+                rect = Rectangle.FromLTRB(p1.X, p0.Y, p0.X, p1.Y);
             }
-            else if (mousePositionInReal.X < startPoint.X && mousePositionInReal.Y < startPoint.Y)
+            else if (p1.X < p0.X && p1.Y < p0.Y)
             {
-                rectangle = Rectangle.FromLTRB(mousePositionInReal.X, mousePositionInReal.Y, startPoint.X, startPoint.Y);
+                rect = Rectangle.FromLTRB(p1.X, p1.Y, p0.X, p0.Y);
             }
-            else if (mousePositionInReal.X >= startPoint.X && mousePositionInReal.Y < startPoint.Y)
+            else if (p1.X >= p0.X && p1.Y < p0.Y)
             {
-                rectangle = Rectangle.FromLTRB(startPoint.X, mousePositionInReal.Y, mousePositionInReal.X, startPoint.Y);
+                rect = Rectangle.FromLTRB(p0.X, p1.Y, p1.X, p0.Y);
             }
             else
             {
@@ -55,71 +57,72 @@ namespace KodoCad
 
         public override bool OnMouseDown(Point mousePositionInReal)
         {
-            if (boundingBox.Right == -1)
+            if (bound.Right == -1)
             {
-                boundingBox = rectangle.Inflate(1.1f);
+                bound = rect.Inflate(1.05f);
                 return true;
             }
 
-            rectangle = Rectangle.FromLTRB(mousePositionInReal.X, mousePositionInReal.Y, mousePositionInReal.X, mousePositionInReal.Y);
-            boundingBox = Rectangle.FromLTRB(mousePositionInReal.X, mousePositionInReal.Y, -1, -1);
-
+            rect = Rectangle.FromLTRB(mousePositionInReal.X, mousePositionInReal.Y, mousePositionInReal.X, mousePositionInReal.Y);
+            bound = Rectangle.FromLTRB(mousePositionInReal.X, mousePositionInReal.Y, -1, -1);
             return false;
         }
 
-        public override void OnDraw(Context context, SolidColorBrush toolBrush)
+        public override void OnDraw(Context context, SolidColorBrush brush)
         {
-            context.DrawRectangle(rectangle, toolBrush, StrokeWidth, Stroke);
+            var stored = brush.Color;
 
-            var stored = toolBrush.Color;
+            brush.Color = new Color(brush.Color.Alpha, brush.Color.Red - 0.5f, brush.Color.Green - 0.5f, brush.Color.Blue - 0.5f);
 
-            toolBrush.Color = new Color(toolBrush.Color.Alpha, toolBrush.Color.Red - 0.1f, toolBrush.Color.Green - 0.1f, toolBrush.Color.Blue - 0.1f);
+            context.FillRectangle(rect, brush);
 
-            context.FillRectangle(rectangle, toolBrush);
+            brush.Color = stored;
 
-            toolBrush.Color = stored;
+            context.DrawRectangle(rect, brush, StrokeWidth, Stroke);
         }
 
         public override bool Contains(Point inReal, float threshold)
         {
             threshold += 0.1f;
 
-            if (!boundingBox.Contains(inReal))
+            if (!bound.Contains(inReal))
                 return false;
 
-            return LineContainsPoint(rectangle.TopLeft, rectangle.TopRight, inReal, threshold) ||
-                   LineContainsPoint(rectangle.TopRight, rectangle.BottomRight, inReal, threshold) ||
-                   LineContainsPoint(rectangle.BottomLeft, rectangle.BottomRight, inReal, threshold) ||
-                   LineContainsPoint(rectangle.TopLeft, rectangle.BottomLeft, inReal, threshold);
+            return LineContainsPoint(rect.TopLeft, rect.TopRight, inReal, threshold) ||
+                   LineContainsPoint(rect.TopRight, rect.BottomRight, inReal, threshold) ||
+                   LineContainsPoint(rect.BottomLeft, rect.BottomRight, inReal, threshold) ||
+                   LineContainsPoint(rect.TopLeft, rect.BottomLeft, inReal, threshold);
         }
 
         public override bool Contained(Rectangle inReal)
         {
-            return inReal.Contains(rectangle.TopLeft) && inReal.Contains(rectangle.BottomRight);
+            return inReal.Contains(rect.TopLeft) && inReal.Contains(rect.BottomRight);
         }
 
         public override void Move(Point moveAmount)
         {
-            rectangle = rectangle.Move(moveAmount.X, moveAmount.Y);
-            boundingBox = boundingBox.Move(moveAmount.X, moveAmount.Y);
+            rect = rect.Move(moveAmount.X, moveAmount.Y);
+            bound = bound.Move(moveAmount.X, moveAmount.Y);
+        }
+
+        public override void Rotate()
+        {
+            CadMath.Rotate(rect, rect.Center);
         }
 
         public override JsonNode ToOutput()
         {
             var json = new JsonNode(JsonType.Object, "rect");
-            json.Append(new JsonNode(JsonType.Number, "l", Stringify(rectangle.Left)));
-            json.Append(new JsonNode(JsonType.Number, "t", Stringify(rectangle.Top)));
-            json.Append(new JsonNode(JsonType.Number, "r", Stringify(rectangle.Right)));
-            json.Append(new JsonNode(JsonType.Number, "b", Stringify(rectangle.Bottom)));
+            json.Append(new JsonNode(JsonType.Number, "l", Stringify(rect.Left)));
+            json.Append(new JsonNode(JsonType.Number, "t", Stringify(rect.Top)));
+            json.Append(new JsonNode(JsonType.Number, "r", Stringify(rect.Right)));
+            json.Append(new JsonNode(JsonType.Number, "b", Stringify(rect.Bottom)));
+
             json.Append(new JsonNode(Filled ? JsonType.True : JsonType.False, "filled"));
             json.Append(new JsonNode(JsonType.Number, "stroke", Stringify(StrokeWidth)));
+            json.Append(new JsonNode(JsonType.String, "type", Stringify(Type)));
             json.Append(new JsonNode(JsonType.Number, "part", Stringify(0)));
             return json;
-        }
-
-        public override void Rotate()
-        {
-            CadMath.Rotate(rectangle, rectangle.Center);
         }
     }
 }

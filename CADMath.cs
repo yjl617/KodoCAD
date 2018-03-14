@@ -13,31 +13,32 @@ namespace KodoCad
     {
     }
 
-    public static class CadUtil
+    public static class CadUtilities
     {
         public static string Stringify(float value)
-        {
-            return value.ToString(CultureInfo.InvariantCulture);
-        }
+            => value.ToString(CultureInfo.InvariantCulture);
 
         public static string Stringify(int value)
-        {
-            return value.ToString(CultureInfo.InvariantCulture);
-        }
+            => value.ToString(CultureInfo.InvariantCulture);
+
+        public static string Stringify(Enum value)
+            => value.ToString();
+
+        public static float MicrometersToMillimeters(int micrometers)
+            => micrometers / 1000f;
+
+        public static int MillimetersToMicrometers(float millimeters)
+            => (int)Math.Round(millimeters * 1000f);
+
+        public static float MillimetersToMils(float millimeters)
+            => (millimeters * 1000f) / 25.4f;
+
+        public static float MilsToMillimeters(float mils)
+            => (mils * 25.4f) / 1000f;
     }
 
     public static class CadMath
     {
-        public static float MillimetersToMils(float millimeters)
-        {
-            return (millimeters * 1000f) / 25.4f;
-        }
-
-        public static float MilsToMillimeters(float mils)
-        {
-            return (mils * 25.4f) / 1000f;
-        }
-
         public static bool LineContainsPoint(Point p1, Point p2, Point p, float threshold)
         {
             var distanceAC = Distance(p1, p);

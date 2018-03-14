@@ -14,6 +14,8 @@ namespace KodoCad
 
         string name;
 
+        public override Point Origin => origin;
+
         Point origin;
         Rectangle boundingBox;
 
@@ -42,8 +44,6 @@ namespace KodoCad
                 }
             }
         }
-
-        public override Point Origin => origin;
 
         public override bool Contained(Rectangle inReal)
         {

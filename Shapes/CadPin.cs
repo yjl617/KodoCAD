@@ -194,8 +194,11 @@ namespace KodoCad
                     break;
             }
 
+            var stored = toolBrush.Color;
+            //toolBrush.Color = Color.Black;
             context.DrawTextLayout(layoutOfName, nameOrigin, toolBrush);
             context.DrawTextLayout(layoutOfNumber, numberOrigin, toolBrush);
+            toolBrush.Color = stored;
 
             context.SetTransform(storedTransform);
         }

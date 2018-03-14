@@ -29,8 +29,14 @@ namespace KodoCad
         ComponentName
     }
 
-    abstract class CadShape
+
+
+    abstract class CadShape : IComparable<CadShape>
     {
+        static int GlobalCount = 0;
+        int count;
+
+
         public float StrokeWidth = 0.1f;
         public StrokeStyle Stroke { get; set; } = new StrokeStyle(new StrokeStyleProperties(
                 startCap: CapStyle.Round,
@@ -41,8 +47,14 @@ namespace KodoCad
                 dashStyle: DashStyle.Solid,
                 dashOffset: 0));
 
+        public int ZOrder = 0;
+
+        public CadShape()
+        {
+            count = GlobalCount++;
+        }
+
         public bool Filled { get; set; }
-        public bool Permanent { get; set; }
         public bool Locked { get; set; }
 
         public CadShapeType Type { get; set; }
@@ -61,5 +73,25 @@ namespace KodoCad
         public abstract void Move(Point moveAmount);
 
         public abstract JsonNode ToOutput();
+
+        public int CompareTo(CadShape other)
+        {
+            if (ReferenceEquals(this, other))
+                return 0;
+
+            var fillComparison = other.Filled.CompareTo(Filled);
+
+            if (fillComparison == 0)
+            {
+                if (ZOrder == other.ZOrder)
+                {
+                    return count.CompareTo(other.count);
+                }
+
+                return ZOrder.CompareTo(other.ZOrder);
+            }
+
+            return fillComparison;
+        }
     }
 }

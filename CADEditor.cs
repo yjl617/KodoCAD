@@ -51,7 +51,7 @@ namespace KodoCad
 
         Set<CadShape> shapesSelected = new Set<CadShape>();
         bool multiSelected;
-        List<CadShape> shapes = new List<CadShape>();
+        SortedSet<CadShape> shapes = new SortedSet<CadShape>();
         CadShape shapeInEditing;
 
         GridMode gridMode = GridMode.Lines;
@@ -59,12 +59,13 @@ namespace KodoCad
         ToolMode toolMode = ToolMode.Select;
         ToolState toolState = ToolState.None;
 
-        int gridStepUnitsMinor = 2;
-        int gridStepUnitsMajor = 10;
+        float gridValue = 1.0f;
+        int gridValueIndex = 0;
+        float[] gridValues = new float[] { 1.0f, 0.5f, 0.25f, 0.125f, 0.1f, 0.05f, 0.025f, 0.01f, 0.005f, 0.0025f, 0.001f };
 
-        float zoomFactor = 1.0f;
-        int zoomFactorIndex = 0;
-        float[] zoomFactors = new float[] { 1.0f, 0.5f, 0.25f, 0.125f, 0.1f, 0.05f, 0.025f, 0.01f, 0.005f, 0.0025f, 0.001f, 0.0005f };
+        float zoomValue = 1.0f;
+        int zoomValueIndex = 0;
+        float[] zoomValues = new float[] { 1.0f, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
 
         Point dpi;
 
@@ -81,8 +82,7 @@ namespace KodoCad
         Point originMovable;
         Point originMovableOnReality;
 
-        Point gridStepMinor;
-        Point gridStepMajor;
+        float gridStep;
 
         Point mousePositionOnScreen;
         Point mousePositionOnScreenSnapped;
@@ -256,30 +256,29 @@ namespace KodoCad
         {
             mousePositionOnScreen = mouse.Position;
 
-            var zoomFactorIndexOld = zoomFactorIndex;
-            zoomFactorIndex = CadMath.Clamp(zoomFactorIndex + (mouse.WheelDelta > 0 ? 1 : -1), 0, zoomFactors.Length - 1);
-            zoomFactor = zoomFactors[zoomFactorIndex];
+            var zoomFactorIndexOld = zoomValueIndex;
+            zoomValueIndex = CadMath.Clamp(zoomValueIndex + (mouse.WheelDelta > 0 ? 1 : -1), 0, zoomValues.Length - 1);
+            zoomValue = zoomValues[zoomValueIndex];
 
-            if (zoomFactorIndex != zoomFactorIndexOld)
+            if (zoomValueIndex != zoomFactorIndexOld)
             {
-                var snapStep = snapMode == SnapMode.Fine ? gridStepMinor : gridStepMajor;
-                var snapUnitStep = snapMode == SnapMode.Fine ? gridStepUnitsMinor : gridStepUnitsMajor;
-
-                var zoomOld = zoomFactors[zoomFactorIndexOld];
-                var zoomNew = zoomFactors[zoomFactorIndex];
+                var zoomOld = gridValues[zoomFactorIndexOld];
+                var zoomNew = gridValues[gridValueIndex];
                 var zoomRatio = zoomOld / zoomNew;
 
-                var unitsOldX = linesFromOrigin.X * snapUnitStep;
+                var unitsOldX = linesFromOrigin.X;
                 var unitsNewX = unitsOldX * zoomRatio;
-                var unitsDiffX = (unitsOldX - unitsNewX) / snapUnitStep;
+                var unitsDiffX = (unitsOldX - unitsNewX);
 
-                var unitsOldY = linesFromOrigin.Y * snapUnitStep;
+                var unitsOldY = linesFromOrigin.Y;
                 var unitsNewY = unitsOldY * zoomRatio;
-                var unitsDiffY = (unitsOldY - unitsNewY) / snapUnitStep;
+                var unitsDiffY = (unitsOldY - unitsNewY);
 
-                gridSize = new Size(CadMath.Round(gridSize.Width * zoomRatio, 0), CadMath.Round(gridSize.Height * zoomRatio, 0));
+                gridSize = new Size(
+                    CadMath.Round(gridSize.Width * zoomRatio, 0),
+                    CadMath.Round(gridSize.Height * zoomRatio, 0));
 
-                origin = new Point(origin.X + snapStep.X * unitsDiffX, origin.Y + snapStep.Y * unitsDiffY);
+                origin = new Point(origin.X + gridStep * unitsDiffX, origin.Y + gridStep * unitsDiffY);
             }
 
             Update();
@@ -356,7 +355,7 @@ namespace KodoCad
 
                     foreach (var shape in shapes)
                     {
-                        if (!shape.Locked && shape.Contains(mousePositionRelativeToOriginReal, 0.2f * zoomFactor))
+                        if (!shape.Locked && shape.Contains(mousePositionRelativeToOriginReal, 0.2f * gridValue))
                         {
                             shapesSelected.Add(shape);
                             break;
@@ -620,26 +619,27 @@ namespace KodoCad
             textFormatSmall = new TextFormat("Roboto Mono", 12);
 
             dpi = context.GetDPI();
-
-            gridStepMinor = new Point(gridStepUnitsMinor / 25.4f * dpi.X, gridStepUnitsMinor / 25.4f * dpi.Y);
-            gridStepMajor = new Point(gridStepUnitsMajor / 25.4f * dpi.X, gridStepUnitsMajor / 25.4f * dpi.Y);
         }
 
         protected override void OnUpdate(Context context)
         {
             var area = new Rectangle(Area.Dimensions);
 
+            gridStep = (gridValue * zoomValue) / 25.4f * dpi.X;
+
             origin = CadMath.Clamp(
                 origin,
-                new Point(-(origin.X + gridStepMinor.X * gridSize.Width) + (area.Width * 6 / 4), -(origin.Y + gridStepMinor.Y * gridSize.Height) + (area.Height * 6 / 4)),
+                new Point(-(gridStep * gridSize.Width) + (area.Width * 6 / 4), -(gridStep * gridSize.Height) + (area.Height * 6 / 4)),
                 new Point(area.Width / 4, area.Height / 4));
             originOnReality = CadMath.Transform(origin, matrixGridToReal);
 
             //
             // Calculate tranformation matrices.
             //
-            matrixRealToGrid = Matrix3x2.Scale((dpi.X / 25.4f) / zoomFactor, (dpi.Y / 25.4f) / zoomFactor);
-            matrixGridToReal = Matrix3x2.Scale((zoomFactor * 25.4f) / dpi.X, (zoomFactor * 25.4f) / dpi.Y);
+            var val = (gridValue * zoomValue);
+
+            matrixRealToGrid = Matrix3x2.Scale((dpi.X / 25.4f) / val, (dpi.Y / 25.4f) / val);
+            matrixGridToReal = Matrix3x2.Scale((val * 25.4f) / dpi.X, (val * 25.4f) / dpi.Y);
 
             originCenter = RealToScreen(originCenterOnReality);
             originMovable = RealToScreen(originMovableOnReality);
@@ -647,28 +647,37 @@ namespace KodoCad
             // Must happen after origin calculation.
             matrixOriginTranslation = Matrix3x2.Translation(origin);
 
-            mousePositionRelativeToOrigin = ScreenToGrid(mousePositionOnScreen);
+            mousePositionRelativeToOrigin =
+                ScreenToGrid(mousePositionOnScreen);
+
             mousePositionRelativeToOriginCenter = new Point(mousePositionOnScreen.X - originCenter.X, mousePositionOnScreen.Y - originCenter.Y);
             mousePositionRelativeToOriginMovable = new Point(mousePositionOnScreen.X - originMovable.X, mousePositionOnScreen.Y - originMovable.Y);
 
-            var snapStep = snapMode == SnapMode.Fine ? gridStepMinor : gridStepMajor;
-            var snapUnitStep = snapMode == SnapMode.Fine ? gridStepUnitsMinor : gridStepUnitsMajor;
+            linesFromOrigin = new Point(
+                (float)Math.Round(
+                    mousePositionRelativeToOrigin.X / gridStep),
+                (float)Math.Round(
+                    mousePositionRelativeToOrigin.Y / gridStep));
 
-            linesFromOrigin = new Point((float)Math.Round(mousePositionRelativeToOrigin.X / snapStep.X),
-                                        (float)Math.Round(mousePositionRelativeToOrigin.Y / snapStep.Y));
+            mousePositionOnScreenSnapped = new Point(origin.X + (gridStep * linesFromOrigin.X),
+                                                     origin.Y + (gridStep * linesFromOrigin.Y));
 
-            mousePositionOnScreenSnapped = new Point(origin.X + (snapStep.X * linesFromOrigin.X), origin.Y + (snapStep.Y * linesFromOrigin.Y));
+            linesFromOriginCenter = new Point((float)Math.Round(mousePositionRelativeToOriginCenter.X / gridStep),
+                                               (float)Math.Round(mousePositionRelativeToOriginCenter.Y / gridStep));
 
-            linesFromOriginCenter = new Point((float)Math.Round(mousePositionRelativeToOriginCenter.X / snapStep.X),
-                                               (float)Math.Round(mousePositionRelativeToOriginCenter.Y / snapStep.Y));
+            linesFromOriginMovable = new Point((float)Math.Round(mousePositionRelativeToOriginMovable.X / gridStep),
+                                               (float)Math.Round(mousePositionRelativeToOriginMovable.Y / gridStep));
 
-            linesFromOriginMovable = new Point((float)Math.Round(mousePositionRelativeToOriginMovable.X / snapStep.X),
-                                               (float)Math.Round(mousePositionRelativeToOriginMovable.Y / snapStep.Y));
-
-            mousePositionRelativeToOriginReal = GridToReal(mousePositionRelativeToOrigin);
-            mousePositionRelativeToOriginRealSnapped = new Point(CadMath.Round(linesFromOrigin.X * snapUnitStep * zoomFactor), CadMath.Round(linesFromOrigin.Y * snapUnitStep * zoomFactor));
-            mousePositionRelativeToOriginCenterRealSnapped = new Point(CadMath.Round(linesFromOriginCenter.X * snapUnitStep * zoomFactor), CadMath.Round(linesFromOriginCenter.Y * snapUnitStep * zoomFactor));
-            mousePositionRelativeToOriginMovableRealSnapped = new Point(CadMath.Round(linesFromOriginMovable.X * snapUnitStep * zoomFactor), CadMath.Round(linesFromOriginMovable.Y * snapUnitStep * zoomFactor));
+            mousePositionRelativeToOriginReal =
+                GridToReal(mousePositionRelativeToOrigin);
+            mousePositionRelativeToOriginRealSnapped
+                = new Point(
+                    CadMath.Round(
+                        (linesFromOrigin.X * gridValue) * zoomValue),
+                    CadMath.Round(
+                        (linesFromOrigin.Y * gridValue) * zoomValue));
+            mousePositionRelativeToOriginCenterRealSnapped = new Point(CadMath.Round(linesFromOriginCenter.X * gridValue), CadMath.Round(linesFromOriginCenter.Y * gridValue));
+            mousePositionRelativeToOriginMovableRealSnapped = new Point(CadMath.Round(linesFromOriginMovable.X * gridValue), CadMath.Round(linesFromOriginMovable.Y * gridValue));
         }
 
         protected override void OnDraw(Context context)
@@ -679,10 +688,10 @@ namespace KodoCad
 
             DrawBackground(context);
 
-            var gridLinesMajorX = (int)Math.Floor(gridSize.Width / gridStepUnitsMajor);
-            var gridLinesMajorY = (int)Math.Floor(gridSize.Height / gridStepUnitsMajor);
-            var gridLinesMinorX = (int)Math.Floor(gridSize.Width / gridStepUnitsMinor);
-            var gridLinesMinorY = (int)Math.Floor(gridSize.Height / gridStepUnitsMinor);
+            var gridLinesMajorX = (int)Math.Floor(gridSize.Width / 5);
+            var gridLinesMajorY = (int)Math.Floor(gridSize.Height / 5);
+            var gridLinesMinorX = (int)Math.Floor(gridSize.Width / 1);
+            var gridLinesMinorY = (int)Math.Floor(gridSize.Height / 1);
 
             context.AntialiasMode = AntialiasMode.Aliased;
 
@@ -692,29 +701,29 @@ namespace KodoCad
             {
                 SharedBrush.Color = gridlineMajorColor;
 
-                var upperBound = CadMath.Clamp((int)Math.Floor((area.Right - origin.X) / gridStepMajor.X), 0, gridLinesMajorX);
-                var lowerBound = CadMath.Clamp((int)Math.Floor(-(origin.X / gridStepMajor.X)), 0, upperBound);
+                var upperBound = CadMath.Clamp((int)Math.Floor((area.Right - origin.X) / (gridValue * 5)), 0, gridLinesMajorX);
+                var lowerBound = CadMath.Clamp((int)Math.Floor(-(origin.X / (gridValue * 5))), 0, upperBound);
 
                 for (var i = lowerBound + 1; i <= upperBound; i++)
                 {
-                    var left = origin.X + gridStepMajor.X * i;
+                    var left = origin.X + (gridValue * 5) * i;
                     var top = Math.Max(area.Top, origin.Y);
-                    var bottom = Math.Min(area.Bottom, origin.Y + gridStepMajor.Y * gridLinesMajorY);
+                    var bottom = Math.Min(area.Bottom, origin.Y + (gridValue * 5) * gridLinesMajorY);
                     context.FillRectangle(Rectangle.FromLTRB(left - 0.5f, top, left + 0.5f, bottom), SharedBrush);
                 }
 
-                upperBound = CadMath.Clamp((int)Math.Floor((area.Bottom - origin.Y) / gridStepMajor.Y), 0, gridLinesMajorY);
-                lowerBound = CadMath.Clamp((int)Math.Floor(-(origin.Y / gridStepMajor.Y)), 0, upperBound);
+                upperBound = CadMath.Clamp((int)Math.Floor((area.Bottom - origin.Y) / (gridValue * 5)), 0, gridLinesMajorY);
+                lowerBound = CadMath.Clamp((int)Math.Floor(-(origin.Y / (gridValue * 5))), 0, upperBound);
 
                 for (var i = lowerBound + 1; i <= upperBound; i++)
                 {
-                    var top = origin.Y + gridStepMajor.Y * i;
+                    var top = origin.Y + (gridValue * 5) * i;
                     var left = Math.Max(area.Left, origin.X);
-                    var right = Math.Min(area.Right, origin.X + gridStepMajor.X * gridLinesMajorX);
+                    var right = Math.Min(area.Right, origin.X + (gridValue * 5) * gridLinesMajorX);
                     context.FillRectangle(Rectangle.FromLTRB(left, top - 0.5f, right, top + 0.5f), SharedBrush);
                 }
 
-                if (snapMode == SnapMode.Fine)
+                /*if (snapMode == SnapMode.Fine)
                 {
                     SharedBrush.Color = gridlineMinorColor;
 
@@ -739,30 +748,30 @@ namespace KodoCad
                         var right = Math.Min(area.Right, origin.X + gridStepMinor.X * gridLinesMinorX);
                         context.FillRectangle(Rectangle.FromLTRB(left, top - 0.5f, right, top + 0.5f), SharedBrush);
                     }
-                }
+                }*/
             }
             else if (gridMode == GridMode.Points)
             {
                 SharedBrush.Color = griddotMajorColor;
 
-                var upperBoundX = CadMath.Clamp((int)Math.Floor((area.Right - origin.X) / gridStepMajor.X), 0, gridLinesMajorX);
-                var lowerBoundX = CadMath.Clamp((int)Math.Floor(-(origin.X / gridStepMajor.X)), 0, upperBoundX);
-                var upperBoundY = CadMath.Clamp((int)Math.Floor((area.Bottom - origin.Y) / gridStepMajor.Y), 0, gridLinesMajorY);
-                var lowerBoundY = CadMath.Clamp((int)Math.Floor(-(origin.Y / gridStepMajor.Y)), 0, upperBoundY);
+                var upperBoundX = CadMath.Clamp((int)Math.Floor((area.Right - origin.X) / (gridValue * 5)), 0, gridLinesMajorX);
+                var lowerBoundX = CadMath.Clamp((int)Math.Floor(-(origin.X / (gridValue * 5))), 0, upperBoundX);
+                var upperBoundY = CadMath.Clamp((int)Math.Floor((area.Bottom - origin.Y) / (gridValue * 5)), 0, gridLinesMajorY);
+                var lowerBoundY = CadMath.Clamp((int)Math.Floor(-(origin.Y / (gridValue * 5))), 0, upperBoundY);
 
                 for (var i = lowerBoundX + 1; i <= upperBoundX; i++)
                 {
-                    var left = origin.X + gridStepMajor.X * i;
+                    var left = origin.X + (gridValue * 5) * i;
 
                     for (var j = lowerBoundY + 1; j <= upperBoundY; j++)
                     {
-                        var top = origin.Y + gridStepMajor.Y * j;
+                        var top = origin.Y + (gridValue * 5) * j;
 
                         context.FillRectangle(Rectangle.FromLTRB(left - 0.5f, top - 0.5f, left + 0.5f, top + 0.5f), SharedBrush);
                     }
                 }
 
-                if (snapMode == SnapMode.Fine)
+                /*if (snapMode == SnapMode.Fine)
                 {
                     SharedBrush.Color = griddotMinorColor;
 
@@ -782,7 +791,7 @@ namespace KodoCad
                             context.FillRectangle(Rectangle.FromLTRB(left - 0.5f, top - 0.5f, left + 0.5f, top + 0.5f), SharedBrush);
                         }
                     }
-                }
+                }*/
             }
 
             //
@@ -800,12 +809,12 @@ namespace KodoCad
                     originCenter.X - 0.5f,
                     Math.Max(area.Top, origin.Y),
                     originCenter.X + 0.5f,
-                    Math.Min(area.Bottom, origin.Y + gridStepMajor.Y * gridLinesMajorY)), SharedBrush);
+                    Math.Min(area.Bottom, origin.Y + gridValue * gridLinesMajorY)), SharedBrush);
 
                 context.FillRectangle(Rectangle.FromLTRB(
                      Math.Max(area.Left, origin.X),
                      originCenter.Y - 0.5f,
-                     Math.Min(area.Right, origin.X + gridStepMajor.X * gridLinesMajorX),
+                     Math.Min(area.Right, origin.X + gridValue * gridLinesMajorX),
                      originCenter.Y + 0.5f), SharedBrush);
             }
 
@@ -814,7 +823,7 @@ namespace KodoCad
             SharedBrush.Opacity = 1;
             SharedBrush.Color = Color.LightSkyBlue;
             context.DrawText(
-                $"grid {CadMath.ToString(CadMath.Round(zoomFactor * gridStepUnitsMinor))} : {CadMath.ToString(CadMath.Round(zoomFactor * gridStepUnitsMajor))}\n" +
+                $"grid {CadMath.ToString(CadMath.Round(gridValue))} : {CadMath.ToString(CadMath.Round(zoomValue))}\n" +
                 $"abs  x:{CadMath.ToString(mousePositionRelativeToOriginRealSnapped.X)} y:{CadMath.ToString(mousePositionRelativeToOriginRealSnapped.Y)}\n" +
                 $"cen  x:{CadMath.ToString(mousePositionRelativeToOriginCenterRealSnapped.X)} y:{CadMath.ToString(mousePositionRelativeToOriginCenterRealSnapped.Y)}\n" +
                 $"rel  x:{CadMath.ToString(mousePositionRelativeToOriginMovableRealSnapped.X)} y:{CadMath.ToString(mousePositionRelativeToOriginMovableRealSnapped.Y)}\n" +
@@ -834,7 +843,21 @@ namespace KodoCad
             SharedBrush.Opacity = 1;
             SharedBrush.Color = geometryColor;
 
-            for (var i = 0; i < shapes.Count; i++)
+            foreach (var shape in shapes)
+            {
+                if (shapesSelected.Contains(shape))
+                {
+                    SharedBrush.Color = new Color(0xFFF3F3F4);
+                    shape.OnDraw(context, SharedBrush);
+                    SharedBrush.Color = geometryColor;
+                }
+                else
+                {
+                    shape.OnDraw(context, SharedBrush);
+                }
+            }
+
+            /*for (var i = 0; i < shapes.Count; i++)
             {
                 var shape = shapes[i];
 
@@ -848,14 +871,14 @@ namespace KodoCad
                 {
                     shape.OnDraw(context, SharedBrush);
                 }
-            }
+            }*/
 
             if (toolMode == ToolMode.Select && toolState == ToolState.Editing)
             {
                 SharedBrush.Opacity = 1;
                 SharedBrush.Color = Color.LightSkyBlue;
 
-                context.DrawRectangle(selection, SharedBrush, 0.5f * zoomFactor);
+                context.DrawRectangle(selection, SharedBrush, 0.5f * gridValue);
             }
 
             context.SetTransform(transformStored);
@@ -890,8 +913,8 @@ namespace KodoCad
             var gridOutline = Rectangle.FromLTRB(
                 Math.Max(area.Left, origin.X),
                 Math.Max(area.Top, origin.Y),
-                Math.Min(area.Right, origin.X + gridStepMajor.X * gridLinesMajorX),
-                Math.Min(area.Bottom, origin.Y + gridStepMajor.Y * gridLinesMajorY));
+                Math.Min(area.Right, origin.X + gridValue * gridLinesMajorX),
+                Math.Min(area.Bottom, origin.Y + gridValue * gridLinesMajorY));
 
             SharedBrush.Opacity = 1;
             SharedBrush.Color = gridOutlineColor;
