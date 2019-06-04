@@ -29,13 +29,10 @@ namespace KodoCad
         ComponentName
     }
 
-
-
     abstract class CadShape : IComparable<CadShape>
     {
         static int GlobalCount = 0;
         int count;
-
 
         public float StrokeWidth = 0.1f;
         public StrokeStyle Stroke { get; set; } = new StrokeStyle(new StrokeStyleProperties(
@@ -54,10 +51,14 @@ namespace KodoCad
             count = GlobalCount++;
         }
 
+        public int Part { get; set; }
+
         public bool Filled { get; set; }
         public bool Locked { get; set; }
 
         public CadShapeType Type { get; set; }
+
+        public abstract Rectangle BoundingBox { get; }
 
         public abstract Point Origin { get; }
 
@@ -72,7 +73,8 @@ namespace KodoCad
         public abstract void Rotate();
         public abstract void Move(Point moveAmount);
 
-        public abstract JsonNode ToOutput();
+        public abstract void FromOutput(string output);
+        public abstract string ToOutput();
 
         public int CompareTo(CadShape other)
         {

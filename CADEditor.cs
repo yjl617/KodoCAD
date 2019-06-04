@@ -1,128 +1,176 @@
 ﻿using System;
-using System.Globalization;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
-
 using Kodo.Graphics;
 using Kodo.Graphics.Style;
 
 namespace KodoCad
 {
-    enum EditorMode { Schematic, Layout, Component, Footprint }
+    enum EditorMode { Schematic, Component, Layout, Footprint }
 
     enum GridMode { None, Lines, Points }
     enum SnapMode { Fine, Coarse }
+
+    enum ColorScheme { Light, Dark }
 
     enum ToolMode { Select, Move, Line, Rectangle, Circle, Text, Pin }
     enum ToolState { None, Armed, Editing }
 
     delegate void ShapeEditHandler(Set<CadShape> shape);
 
+    class CadSchematicEditor : Control
+    {
+        public CadSchematicEditor(Window window)
+            : base(window)
+        {
+        }
+    }
+
     class CadEditor : Control
     {
-        public void OutputComponent()
-        {
-
-        }
-
         public event ShapeEditHandler OnShapeEdit;
 
-        static readonly Color basicForegroundColor = new Color(0xFFECF1F3);
+        Color backgroundColor;
+        Color gridOutlineColor;
+        Color gridCoarseLineColor;
+        Color gridFineLineColor;
+        Color gridCoarseDotColor;
+        Color gridFineDotColor;
+        Color crosshairCursorColor;
+        Color crosshairRelativeColor;
+        Color statusColor;
+        Color selectColor;
+        Color geometryStrokeColor;
+        Color geometryFillColor;
 
-        Color gridOutlineColor = Color.FromAColor(0.5f, basicForegroundColor);
+        void SetColorScheme(ColorScheme scheme)
+        {
+            Color foregroundColor;
 
-        Color gridlineMajorColor = Color.FromAColor(0.15f, basicForegroundColor);
-        Color gridlineMinorColor = Color.FromAColor(0.05f, basicForegroundColor);
+            colorScheme = scheme;
 
-        Color griddotMajorColor = Color.FromAColor(0.4f, basicForegroundColor);
-        Color griddotMinorColor = Color.FromAColor(0.1f, basicForegroundColor);
+            switch (scheme)
+            {
+                case ColorScheme.Light:
+                    foregroundColor = Color.DimGray;
+                    backgroundColor = Color.FloralWhite;
 
-        Color crosshairCursorColor = Color.GhostWhite;
-        Color crosshairRelativeColor = Color.GhostWhite;
+                    gridOutlineColor = Color.FromAColor(0.5f, foregroundColor);
 
-        Color geometryColor = new Color(0xFFB4C0C3);
+                    gridCoarseLineColor = Color.FromAColor(0.15f, foregroundColor);
+                    gridFineLineColor = Color.FromAColor(0.1f, foregroundColor);
 
-        float crosshairWidth = 1f;
-        float crosshairHeight = 20f;
+                    gridCoarseDotColor = Color.FromAColor(0.4f, foregroundColor);
+                    gridFineDotColor = Color.FromAColor(0.1f, foregroundColor);
 
-        bool drawCenterAxes;
+                    crosshairCursorColor = Color.DimGray;
+                    crosshairRelativeColor = Color.DimGray;
 
-        Set<CadShape> shapesSelected = new Set<CadShape>();
+                    selectColor = Color.SkyBlue;
+
+                    geometryStrokeColor = Color.Black;
+
+                    statusColor = Color.DimGray;
+
+                    break;
+                case ColorScheme.Dark:
+                    backgroundColor = new Color(0.1, 0.15, 0.2);
+                    foregroundColor = new Color(0xFFECF1F3);
+
+                    gridOutlineColor = Color.FromAColor(0.5f, foregroundColor);
+
+                    gridCoarseLineColor = Color.FromAColor(0.15f, foregroundColor);
+                    gridFineLineColor = Color.FromAColor(0.05f, foregroundColor);
+
+                    gridCoarseDotColor = Color.FromAColor(0.4f, foregroundColor);
+                    gridFineDotColor = Color.FromAColor(0.1f, foregroundColor);
+
+                    crosshairCursorColor = Color.GhostWhite;
+                    crosshairRelativeColor = Color.GhostWhite;
+
+                    selectColor = Color.SkyBlue;
+
+                    statusColor = Color.LightSkyBlue;
+
+                    geometryStrokeColor = new Color(0xFFB4C0C3);
+                    break;
+            }
+        }
+
+        readonly float crosshairWidth = 2f;
+        readonly float crosshairHeight = 20f;
+
+        bool drawCenterAxes = true;
+        bool drawRelativeCrosshair = true;
+
         bool multiSelected;
-        List<CadShape> shapes = new List<CadShape>();
         CadShape shapeInEditing;
+        List<CadShape> shapes = new List<CadShape>();
+        Set<CadShape> shapesSelected = new Set<CadShape>();
 
+        ColorScheme colorScheme = ColorScheme.Light;
         GridMode gridMode = GridMode.Lines;
         SnapMode snapMode = SnapMode.Fine;
         ToolMode toolMode = ToolMode.Select;
         ToolState toolState = ToolState.None;
 
-        int gridStepUnitsMinor = 2;
-        int gridStepUnitsMajor = 10;
+        static readonly float[] zoomSettings = new float[] { 2.0f, 1.0f, 0.5f, 0.25f, 0.125f, 0.1f, 0.05f, 0.025f, 0.01f };
+        int zoomSettingIndex = 1;
+        float zoomSetting = 1.0f;
 
-        float zoomFactor = 1.0f;
-        int zoomFactorIndex = 0;
+        static readonly float[] gridSettings = new float[] { 10f, 5.0f, 2.5f, 1.25f, 1f, 0.5f };
+        int gridSettingIndex = 0;
+        float gridSettingCoarse = 10.0f;
+        float gridSettingFine = 10.0f / 5;
 
-        float[] zoomFactors = new float[] { 1.0f, 0.5f, 0.25f, 0.125f, 0.1f, 0.05f, 0.025f, 0.01f, 0.005f, 0.0025f, 0.001f, 0.0005f };
+        Point cameraTranslation = new Point(-570, -400);
 
-        Point dpi;
+        Size worldSize = new Size(300, 210);
 
-        Size gridSizeOriginal = new Size(300, 210);
-
-        Size gridSize = new Size(300, 210);
+        Size viewportSize;
+        Point viewportDPI;
+        Point viewportCenterOnWorld;
 
         Rectangle selection;
         Point selectionStartPoint;
         Point movementStartPoint;
 
-        Point origin;
-        Point originOnReality;
-        Point originCenter;
-        Point originCenterOnReality = new Point(150, 105);
-        Point originMovable;
-        Point originMovableOnReality;
+        Point worldOriginOnScreen;
+        Point worldEndOnScreen;
+        Point gridMajorSizeOnScreen;
+        Point gridMinorSizeOnScreen;
 
-        Point gridStepMinor;
-        Point gridStepMajor;
+        Point relativeCursorOnWorld;
+        Point relativeCursorOnScreen;
 
-        Point mousePositionOnScreen;
-        Point mousePositionOnScreenSnapped;
         Point mousePositionWhenPressed;
-        Point mousePositionRelativeToOrigin;
-        Point mousePositionRelativeToOriginReal;
-        Point mousePositionRelativeToOriginRealSnapped;
+        Point mousePositionOnScreen;
+        Point mousePositionOnScreenWorldSnapped;
+        Point mousePositionOnWorld;
+        Point mousePositionOnWorldSnapped;
+
         Point mousePositionRelativeToOriginCenter;
-        Point mousePositionRelativeToOriginCenterRealSnapped;
+        Point mousePositionRelativeToOriginCenterSnapped;
         Point mousePositionRelativeToOriginMovable;
-        Point mousePositionRelativeToOriginMovableReal;
-        Point mousePositionRelativeToOriginMovableRealSnapped;
+        Point mousePositionRelativeToOriginMovableSnapped;
 
-        Point linesFromOrigin;
-        Point linesFromOriginCenter;
-        Point linesFromOriginMovable;
-
-        TextFormat textFormatTest;
-
+        TextFormat textFormatStatus;
         TextFormat textFormatBig;
         TextFormat textFormatSmall;
 
-        Matrix3x2 matrixGridToReal;
-        Matrix3x2 matrixRealToGrid;
-        Matrix3x2 matrixOriginTranslation;
+        Matrix3x2 worldTransform;
+        Matrix3x2 worldTransformInverse;
 
-        public Size GridSize
+        public Size WorldSize
         {
-            get { return gridSize; }
+            get { return worldSize; }
             set
             {
-                if (gridSize != value)
+                if (worldSize != value)
                 {
-                    gridSize = value;
-                    originCenterOnReality = new Point(gridSize.Width / 2, gridSize.Height / 2);
-                    originMovableOnReality = new Point(0, 0);
-                    Update();
+                    worldSize = value;
+                    Load();
                 }
             }
         }
@@ -173,6 +221,11 @@ namespace KodoCad
                     break;
                 }
             }*/
+
+            /*var testline = new CadLine(new Line(new Point(100,100), new Point(200,100)));
+            var testoutput = testline.ToOutput();
+            var testline2 = new CadLine(testoutput);
+            shapes.Add(testline2);*/
         }
 
         protected override void OnMouseUp(Mouse mouse)
@@ -196,7 +249,7 @@ namespace KodoCad
             if (mouse.Button == MouseButton.Left && toolMode == ToolMode.Select)
             {
                 toolState = ToolState.Editing;
-                selectionStartPoint = mousePositionRelativeToOriginRealSnapped;
+                selectionStartPoint = mousePositionOnWorldSnapped;
             }
             else if (mouse.Button == MouseButton.Left && toolMode == ToolMode.Move)
             {
@@ -213,7 +266,7 @@ namespace KodoCad
             {
                 toolState = ToolState.Editing;
 
-                var stopEditing = shapeInEditing.OnMouseDown(mousePositionRelativeToOriginRealSnapped);
+                var stopEditing = shapeInEditing.OnMouseDown(mousePositionOnWorldSnapped);
 
                 if (stopEditing)
                 {
@@ -257,35 +310,51 @@ namespace KodoCad
 
         protected override void OnMouseWheel(Mouse mouse)
         {
-            mousePositionOnScreen = mouse.Position;
+            var wheelDirection = Math.Sign(mouse.WheelDelta);
 
-            var zoomFactorIndexOld = zoomFactorIndex;
-            zoomFactorIndex = CadMath.Clamp(zoomFactorIndex + (mouse.WheelDelta > 0 ? 1 : -1), 0, zoomFactors.Length - 1);
-            zoomFactor = zoomFactors[zoomFactorIndex];
-
-            if (zoomFactorIndex != zoomFactorIndexOld)
+            //
+            // Grid
+            //
+            if (Keyboard.IsDown(Key.CtrlLeft))
             {
-                var snapStep = snapMode == SnapMode.Fine ? gridStepMinor : gridStepMajor;
-                var snapUnitStep = snapMode == SnapMode.Fine ? gridStepUnitsMinor : gridStepUnitsMajor;
+                // Get a new grid setting value from the list.
+                var gridSettingIndexOld = gridSettingIndex;
+                gridSettingIndex = CadMath.Clamp(gridSettingIndex + wheelDirection, 0, gridSettings.Length - 1);
+                gridSettingCoarse = gridSettings[gridSettingIndex];
 
-                var zoomOld = zoomFactors[zoomFactorIndexOld];
-                var zoomNew = zoomFactors[zoomFactorIndex];
-                var zoomRatio = zoomOld / zoomNew;
-
-                var unitsOldX = linesFromOrigin.X * snapUnitStep;
-                var unitsNewX = unitsOldX * zoomRatio;
-                var unitsDiffX = (unitsOldX - unitsNewX) / snapUnitStep;
-
-                var unitsOldY = linesFromOrigin.Y * snapUnitStep;
-                var unitsNewY = unitsOldY * zoomRatio;
-                var unitsDiffY = (unitsOldY - unitsNewY) / snapUnitStep;
-
-                gridSize = new Size(CadMath.Round(gridSize.Width * zoomRatio, 0), CadMath.Round(gridSize.Height * zoomRatio, 0));
-
-                origin = new Point(origin.X + snapStep.X * unitsDiffX, origin.Y + snapStep.Y * unitsDiffY);
+                // Is this actually a new setting?
+                if (gridSettingIndex != gridSettingIndexOld)
+                {
+                    gridSettingFine = CadMath.Round(gridSettingCoarse / 5);
+                    Update();
+                }
             }
+            //
+            // Zoom
+            //
+            else
+            {
+                // Get a new zoom setting value from the list.
+                var zoomSettingIndexOld = zoomSettingIndex;
+                zoomSettingIndex = CadMath.Clamp(zoomSettingIndex + wheelDirection, 0, zoomSettings.Length - 1);
+                zoomSetting = zoomSettings[zoomSettingIndex];
 
-            Update();
+                // Is this actually a new setting?
+                if (zoomSettingIndex != zoomSettingIndexOld)
+                {
+                    var zoomOld = (viewportDPI.Y / 25.4f) / zoomSettings[zoomSettingIndexOld];
+                    var zoomNew = (viewportDPI.Y / 25.4f) / zoomSettings[zoomSettingIndex];
+
+                    var msx = mousePositionOnScreen.X - viewportSize.Width / 2;
+                    var msy = mousePositionOnScreen.Y - viewportSize.Height / 2;
+                    var dx = cameraTranslation.X - msx;
+                    var dy = cameraTranslation.Y - msy;
+
+                    cameraTranslation = new Point(cameraTranslation.X - (dx * (1 - zoomNew / zoomOld)),
+                                                  cameraTranslation.Y - (dy * (1 - zoomNew / zoomOld)));
+                    Update();
+                }
+            }
         }
 
         protected override void OnMouseMove(Mouse mouse)
@@ -294,15 +363,20 @@ namespace KodoCad
 
             mousePositionOnScreen = mouse.Position;
 
-            var distanceX = -(mousePositionOnScreen.X - mousePositionWhenPressed.X);
-            var distanceY = -(mousePositionOnScreen.Y - mousePositionWhenPressed.Y);
+            // Calculate distance from the press event.
+            var distanceX = mousePositionWhenPressed.X - mousePositionOnScreen.X;
+            var distanceY = mousePositionWhenPressed.Y - mousePositionOnScreen.Y;
 
+            // Move the camera?
             if (mouse.Button == MouseButton.Middle)
             {
+                cameraTranslation = new Point(cameraTranslation.X - distanceX, cameraTranslation.Y - distanceY);
+
+                // Update the press position.
                 mousePositionWhenPressed = mousePositionOnScreen;
-                origin = new Point(origin.X - distanceX, origin.Y - distanceY);
             }
 
+            // Need to update to make sure all coordinates are up-to-date.
             Update();
 
             if (toolMode == ToolMode.Select)
@@ -310,7 +384,7 @@ namespace KodoCad
                 if (toolState == ToolState.Editing)
                 {
                     var start = selectionStartPoint;
-                    var end = mousePositionRelativeToOriginRealSnapped;
+                    var end = mousePositionOnWorldSnapped;
 
                     if (distanceX >= 0 && distanceY >= 0)
                     {
@@ -359,7 +433,7 @@ namespace KodoCad
 
                     foreach (var shape in shapes)
                     {
-                        if (!shape.Locked && shape.Contains(mousePositionRelativeToOriginReal, 0.2f * zoomFactor))
+                        if (!shape.Locked && shape.Contains(mousePositionOnWorld, 0.2f * zoomSetting))
                         {
                             shapesSelected.Add(shape);
                             break;
@@ -371,7 +445,7 @@ namespace KodoCad
             }
             else if (toolMode == ToolMode.Move && toolState == ToolState.Editing)
             {
-                var mousePos = mousePositionRelativeToOriginRealSnapped;
+                var mousePos = mousePositionOnWorldSnapped;
                 var moveAmount = new Point(mousePos.X - movementStartPoint.X, mousePos.Y - movementStartPoint.Y);
 
                 movementStartPoint = mousePos;
@@ -385,7 +459,7 @@ namespace KodoCad
             }
             else if (shapeInEditing != null && toolState == ToolState.Editing)
             {
-                shapeInEditing.OnMouseMove(mousePositionRelativeToOriginRealSnapped);
+                shapeInEditing.OnMouseMove(mousePositionOnWorldSnapped);
             }
         }
 
@@ -479,32 +553,35 @@ namespace KodoCad
             }
             else if (key == Key.T && toolMode != ToolMode.Text)
             {
+                shapes.Remove(shapeInEditing);
+
                 toolMode = ToolMode.Text;
                 toolState = ToolState.Editing;
 
-                var textFormat = new TextFormat("Nunito", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 1, "en-US");
-                shapeInEditing = new CadText("CadText", textFormat, mousePositionRelativeToOriginRealSnapped);
+                shapeInEditing = new CadText("CadText", "Roboto Mono", 1, FontWeight.Normal, FontStyle.Normal, mousePositionOnWorldSnapped);
                 shapes.Add(shapeInEditing);
                 Refresh();
             }
             else if (key == Key.P && toolMode != ToolMode.Pin)
             {
+                shapes.Remove(shapeInEditing);
+
                 toolMode = ToolMode.Pin;
-                var textFormat = new TextFormat("Nunito", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 1, "en-US");
-                shapeInEditing = new CadPin("CadPin", 1, 5, textFormat, textFormat, mousePositionRelativeToOriginRealSnapped);
+                var textFormat = new TextFormat("Roboto Mono", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 1, "en-US");
+                shapeInEditing = new CadPin("CadPin", 1, 5, textFormat, textFormat, mousePositionOnWorldSnapped);
                 toolState = ToolState.Armed;
 
                 shapes.Add(shapeInEditing);
                 shapesSelected.Clear();
                 shapesSelected.Add(shapeInEditing);
 
-                shapeInEditing.OnMouseDown(mousePositionRelativeToOriginRealSnapped);
+                shapeInEditing.OnMouseDown(mousePositionOnWorldSnapped);
 
                 toolMode = ToolMode.Move;
                 toolState = ToolState.Editing;
 
                 movementStartPoint = shapesSelected.First().Origin;
-                mousePositionOnScreen = RealToScreen(movementStartPoint);
+                mousePositionOnScreen = WorldToScreen(movementStartPoint);
 
                 Mouse.SetPosition(FromWindowToScreen(FromControlToWindow(mousePositionOnScreen)));
 
@@ -524,7 +601,7 @@ namespace KodoCad
                         Mouse.SetPosition(
                             FromWindowToScreen(
                                 FromControlToWindow(
-                                    RealToScreen(shapesSelected.First().Origin))));
+                                    WorldToScreen(shapesSelected.First().Origin))));
                     }
 
                     Update();
@@ -533,6 +610,7 @@ namespace KodoCad
                 {
                     toolMode = ToolMode.Rectangle;
 
+                    shapes.Remove(shapeInEditing);
                     shapeInEditing = new CadRectangle();
                     toolState = ToolState.Armed;
 
@@ -545,6 +623,7 @@ namespace KodoCad
             {
                 toolMode = ToolMode.Line;
 
+                shapes.Remove(shapeInEditing);
                 shapeInEditing = new CadLine();
                 toolState = ToolState.Armed;
 
@@ -558,232 +637,288 @@ namespace KodoCad
                 toolState = ToolState.Editing;
 
                 movementStartPoint = shapesSelected.First().Origin;
-                mousePositionOnScreen = RealToScreen(movementStartPoint);
+                mousePositionOnScreen = WorldToScreen(movementStartPoint);
 
                 Mouse.SetPosition(FromWindowToScreen(FromControlToWindow(mousePositionOnScreen)));
 
                 Update();
             }
+            else if (key == Key.C)
+            {
+                if (Keyboard.IsDown(Key.AltLeft))
+                {
+                    SetColorScheme(colorScheme == ColorScheme.Light ? ColorScheme.Dark : ColorScheme.Light);
+                    Update();
+                }
+            }
             else if (key == Key.Space && IsMouseInside == true)
             {
-                originMovable = mousePositionOnScreenSnapped;
-                originMovableOnReality = ScreenToReal(originMovable);
+                relativeCursorOnWorld = mousePositionOnWorldSnapped;
                 Update();
+            }
+            else if (key == Key.S)
+            {
+                if (Keyboard.IsDown(Key.CtrlLeft))
+                {
+                    shapes.Remove(shapeInEditing);
+
+                    var component = new CadComponent(shapes, viewportCenterOnWorld);
+                    shapes.Clear();
+                    shapes.Add(component);
+
+                    var str = component.ToOutput();
+                }
             }
         }
 
-        /// <summary>
-        /// In real coordinates.
-        /// </summary>
-        /// <param name="abs"></param>
         Point AbsoluteToCenter(Point abs)
         {
-            return new Point(abs.X + originCenterOnReality.X, abs.Y + originCenterOnReality.Y);
+            return new Point(abs.X + viewportCenterOnWorld.X, abs.Y + viewportCenterOnWorld.Y);
         }
 
         Point CenterToAbsolute(Point center)
         {
-            return new Point(center.X - originCenterOnReality.X, center.Y - originCenterOnReality.Y);
+            return new Point(center.X - viewportCenterOnWorld.X, center.Y - viewportCenterOnWorld.Y);
         }
 
-        Point RealToGrid(Point real)
+        Point WorldToScreen(Point worldPoint)
         {
-            return CadMath.Transform(real, matrixRealToGrid);
+            return CadMath.Transform(worldPoint, worldTransform);
         }
 
-        Point GridToReal(Point grid)
+        Point ScreenToWorld(Point screenPoint)
         {
-            return CadMath.Transform(grid, matrixGridToReal);
-        }
-
-        Point RealToScreen(Point real)
-        {
-            return GridToScreen(RealToGrid(real));
-        }
-
-        Point GridToScreen(Point grid)
-        {
-            return new Point(origin.X + grid.X, origin.Y + grid.Y);
-        }
-
-        Point ScreenToGrid(Point screen)
-        {
-            return new Point(screen.X - origin.X, screen.Y - origin.Y);
-        }
-
-        Point ScreenToReal(Point screen)
-        {
-            return GridToReal(ScreenToGrid(screen));
+            return CadMath.Transform(screenPoint, worldTransformInverse);
         }
 
         protected override void OnLoad(Context context)
         {
-            textFormatTest = new TextFormat("Roboto Mono", 12);
+            SetColorScheme(colorScheme);
+
+            textFormatStatus = new TextFormat("Roboto Mono", 12, FontWeight.Normal);
+            textFormatStatus.TextAlignment = TextAlignment.Trailing;
+            textFormatStatus.ParagraphAlignment = ParagraphAlignment.Far;
             textFormatBig = new TextFormat("Roboto Mono", 16);
             textFormatSmall = new TextFormat("Roboto Mono", 12);
 
-            dpi = context.GetDPI();
+            viewportDPI = context.GetDPI();
 
-            gridStepMinor = new Point(gridStepUnitsMinor / 25.4f * dpi.X, gridStepUnitsMinor / 25.4f * dpi.Y);
-            gridStepMajor = new Point(gridStepUnitsMajor / 25.4f * dpi.X, gridStepUnitsMajor / 25.4f * dpi.Y);
+            viewportCenterOnWorld = new Point(worldSize.Width / 2, worldSize.Height / 2);
+
+            /*var ss = new List<CadShape>() {
+                new CadText("Resistor", "Roboto Mono", 1, FontWeight.Normal, FontStyle.Normal, new Point(viewportCenterOnWorld.X, viewportCenterOnWorld.Y - 5)) { Type = CadShapeType.ComponentName },
+                new CadText("R", "Roboto Mono", 1, FontWeight.Normal, FontStyle.Normal, new Point(viewportCenterOnWorld.X, viewportCenterOnWorld.Y + 5)) { Type = CadShapeType.ComponentReference }
+            };
+
+            shapes.AddRange(ss);*/
+
+            //var component = new CadComponent(ss, centerOnWorld);
+            //shapes.Add(component);
         }
 
         protected override void OnUpdate(Context context)
         {
-            var area = new Rectangle(Area.Dimensions);
-
-            origin = CadMath.Clamp(
-                origin,
-                new Point(-(origin.X + gridStepMinor.X * gridSize.Width) + (area.Width * 6 / 4), -(origin.Y + gridStepMinor.Y * gridSize.Height) + (area.Height * 6 / 4)),
-                new Point(area.Width / 4, area.Height / 4));
-            originOnReality = CadMath.Transform(origin, matrixGridToReal);
+            viewportSize = Area.Dimensions;
 
             //
-            // Calculate tranformation matrices.
+            // Calculate world transformation matrix.
             //
-            matrixRealToGrid = Matrix3x2.Scale((dpi.X / 25.4f) / zoomFactor, (dpi.Y / 25.4f) / zoomFactor);
-            matrixGridToReal = Matrix3x2.Scale((zoomFactor * 25.4f) / dpi.X, (zoomFactor * 25.4f) / dpi.Y);
+            worldTransform = Matrix3x2.Identity;
+            worldTransform *= Matrix3x2.Translation(cameraTranslation);
+            worldTransform *= Matrix3x2.Scale((viewportDPI.X / 25.4f) / zoomSetting, (viewportDPI.Y / 25.4f) / zoomSetting, cameraTranslation);
+            worldTransform *= Matrix3x2.Translation(new Point(viewportSize.Width / 2, viewportSize.Height / 2));
+            worldTransformInverse = Matrix3x2.Invert(worldTransform);
 
-            originCenter = RealToScreen(originCenterOnReality);
-            originMovable = RealToScreen(originMovableOnReality);
+            mousePositionOnWorld = ScreenToWorld(mousePositionOnScreen);
 
-            // Must happen after origin calculation.
-            matrixOriginTranslation = Matrix3x2.Translation(origin);
+            if (snapMode == SnapMode.Coarse)
+            {
+                mousePositionOnWorldSnapped = new Point((float)Math.Round(mousePositionOnWorld.X / gridSettingCoarse) * gridSettingCoarse, (float)Math.Round(mousePositionOnWorld.Y / gridSettingCoarse) * gridSettingCoarse);
+            }
+            else
+            {
+                mousePositionOnWorldSnapped = new Point((float)Math.Round(mousePositionOnWorld.X / gridSettingFine) * gridSettingFine, (float)Math.Round(mousePositionOnWorld.Y / gridSettingFine) * gridSettingFine);
+            }
 
-            mousePositionRelativeToOrigin = ScreenToGrid(mousePositionOnScreen);
-            mousePositionRelativeToOriginCenter = new Point(mousePositionOnScreen.X - originCenter.X, mousePositionOnScreen.Y - originCenter.Y);
-            mousePositionRelativeToOriginMovable = new Point(mousePositionOnScreen.X - originMovable.X, mousePositionOnScreen.Y - originMovable.Y);
+            mousePositionOnScreenWorldSnapped = WorldToScreen(mousePositionOnWorldSnapped);
 
-            var snapStep = snapMode == SnapMode.Fine ? gridStepMinor : gridStepMajor;
-            var snapUnitStep = snapMode == SnapMode.Fine ? gridStepUnitsMinor : gridStepUnitsMajor;
+            relativeCursorOnScreen = WorldToScreen(relativeCursorOnWorld);
 
-            linesFromOrigin = new Point((float)Math.Round(mousePositionRelativeToOrigin.X / snapStep.X),
-                                        (float)Math.Round(mousePositionRelativeToOrigin.Y / snapStep.Y));
+            worldOriginOnScreen = WorldToScreen(new Point());
+            worldEndOnScreen = WorldToScreen(new Point(worldSize.Width, worldSize.Height));
+            gridMajorSizeOnScreen = WorldToScreen(new Point(gridSettingCoarse, gridSettingCoarse));
+            gridMinorSizeOnScreen = WorldToScreen(new Point(gridSettingFine, gridSettingFine));
 
-            mousePositionOnScreenSnapped = new Point(origin.X + (snapStep.X * linesFromOrigin.X), origin.Y + (snapStep.Y * linesFromOrigin.Y));
+            viewportCenterOnWorld = new Point(worldSize.Width / 2, worldSize.Height / 2);
 
-            linesFromOriginCenter = new Point((float)Math.Round(mousePositionRelativeToOriginCenter.X / snapStep.X),
-                                               (float)Math.Round(mousePositionRelativeToOriginCenter.Y / snapStep.Y));
-
-            linesFromOriginMovable = new Point((float)Math.Round(mousePositionRelativeToOriginMovable.X / snapStep.X),
-                                               (float)Math.Round(mousePositionRelativeToOriginMovable.Y / snapStep.Y));
-
-            mousePositionRelativeToOriginReal = GridToReal(mousePositionRelativeToOrigin);
-            mousePositionRelativeToOriginRealSnapped = new Point(CadMath.Round(linesFromOrigin.X * snapUnitStep * zoomFactor), CadMath.Round(linesFromOrigin.Y * snapUnitStep * zoomFactor));
-            mousePositionRelativeToOriginCenterRealSnapped = new Point(CadMath.Round(linesFromOriginCenter.X * snapUnitStep * zoomFactor), CadMath.Round(linesFromOriginCenter.Y * snapUnitStep * zoomFactor));
-            mousePositionRelativeToOriginMovableRealSnapped = new Point(CadMath.Round(linesFromOriginMovable.X * snapUnitStep * zoomFactor), CadMath.Round(linesFromOriginMovable.Y * snapUnitStep * zoomFactor));
+            mousePositionRelativeToOriginCenterSnapped = new Point(mousePositionOnWorldSnapped.X - viewportCenterOnWorld.X, mousePositionOnWorldSnapped.Y - viewportCenterOnWorld.Y);
+            mousePositionRelativeToOriginMovableSnapped = new Point(mousePositionOnWorldSnapped.X - relativeCursorOnWorld.X, mousePositionOnWorldSnapped.Y - relativeCursorOnWorld.Y);
         }
 
         protected override void OnDraw(Context context)
         {
             var area = new Rectangle(Area.Dimensions);
 
+            //
+            // Draw background
+            //
+
+            SharedBrush.Color = backgroundColor;
+            context.FillRectangle(area, SharedBrush);
+
             context.PushAxisAlignedClip(area, AntialiasMode.PerPrimitive);
 
-            DrawBackground(context);
+            //
+            // Draw grid
+            //
 
-            var gridLinesMajorX = (int)Math.Floor(gridSize.Width / gridStepUnitsMajor);
-            var gridLinesMajorY = (int)Math.Floor(gridSize.Height / gridStepUnitsMajor);
-            var gridLinesMinorX = (int)Math.Floor(gridSize.Width / gridStepUnitsMinor);
-            var gridLinesMinorY = (int)Math.Floor(gridSize.Height / gridStepUnitsMinor);
+            DrawGrid(context);
+
+            //
+            // Draw geometry
+            //
+
+            var transformStored = context.GetTransform();
+
+            context.AntialiasMode = AntialiasMode.PerPrimitive;
+            context.SetTransform(worldTransform * transformStored);
+
+            SharedBrush.Color = geometryStrokeColor;
+
+            for (var i = 0; i < shapes.Count; i++)
+            {
+                var shape = shapes[i];
+
+                if (shapesSelected.Contains(shape))
+                {
+                    SharedBrush.Color = selectColor;
+                    shape.OnDraw(context, SharedBrush);
+                    SharedBrush.Color = geometryStrokeColor;
+                }
+                else
+                {
+                    shape.OnDraw(context, SharedBrush);
+                }
+            }
+
+            context.SetTransform(transformStored);
+
+            //
+            // Draw selection rectangle
+            //
+
+            if (toolMode == ToolMode.Select && toolState == ToolState.Editing)
+            {
+                var tl = WorldToScreen(selection.TopLeft);
+                var br = WorldToScreen(selection.BottomRight);
+                var selectionOnScreen = Rectangle.FromLTRB(tl.X, tl.Y, br.X, br.Y);
+
+                SharedBrush.Color = selectColor;
+
+                context.AntialiasMode = AntialiasMode.Aliased;
+                context.DrawRectangle(selectionOnScreen, SharedBrush, 1);
+            }
+
+            //
+            // Draw cursor and relative crosshairs.
+            //
 
             context.AntialiasMode = AntialiasMode.Aliased;
 
-            SharedBrush.Opacity = 1;
+            var crossHalfW = crosshairWidth / 2;
+            var crossHalfH = crosshairHeight / 2;
 
-            if (gridMode == GridMode.Lines)
+            SharedBrush.Color = crosshairCursorColor;
+            context.FillRectangle(Rectangle.FromXYWH(mousePositionOnScreenWorldSnapped.X - crossHalfH, mousePositionOnScreenWorldSnapped.Y - crossHalfW, crosshairHeight, crosshairWidth), SharedBrush);
+            context.FillRectangle(Rectangle.FromXYWH(mousePositionOnScreenWorldSnapped.X - crossHalfW, mousePositionOnScreenWorldSnapped.Y - crossHalfH, crosshairWidth, crosshairHeight), SharedBrush);
+
+            if (drawRelativeCrosshair)
             {
-                SharedBrush.Color = gridlineMajorColor;
-
-                var upperBound = CadMath.Clamp((int)Math.Floor((area.Right - origin.X) / gridStepMajor.X), 0, gridLinesMajorX);
-                var lowerBound = CadMath.Clamp((int)Math.Floor(-(origin.X / gridStepMajor.X)), 0, upperBound);
-
-                for (var i = lowerBound + 1; i <= upperBound; i++)
-                {
-                    var left = origin.X + gridStepMajor.X * i;
-                    var top = Math.Max(area.Top, origin.Y);
-                    var bottom = Math.Min(area.Bottom, origin.Y + gridStepMajor.Y * gridLinesMajorY);
-                    context.FillRectangle(Rectangle.FromLTRB(left - 0.5f, top, left + 0.5f, bottom), SharedBrush);
-                }
-
-                upperBound = CadMath.Clamp((int)Math.Floor((area.Bottom - origin.Y) / gridStepMajor.Y), 0, gridLinesMajorY);
-                lowerBound = CadMath.Clamp((int)Math.Floor(-(origin.Y / gridStepMajor.Y)), 0, upperBound);
-
-                for (var i = lowerBound + 1; i <= upperBound; i++)
-                {
-                    var top = origin.Y + gridStepMajor.Y * i;
-                    var left = Math.Max(area.Left, origin.X);
-                    var right = Math.Min(area.Right, origin.X + gridStepMajor.X * gridLinesMajorX);
-                    context.FillRectangle(Rectangle.FromLTRB(left, top - 0.5f, right, top + 0.5f), SharedBrush);
-                }
-
-                if (snapMode == SnapMode.Fine)
-                {
-                    SharedBrush.Color = gridlineMinorColor;
-
-                    upperBound = CadMath.Clamp((int)Math.Ceiling((area.Right - origin.X) / gridStepMinor.X), 0, gridLinesMinorX);
-                    lowerBound = CadMath.Clamp((int)Math.Ceiling(-(origin.X / gridStepMinor.X)), 0, upperBound);
-
-                    for (var i = lowerBound + 1; i < upperBound; i++)
-                    {
-                        var left = origin.X + gridStepMinor.X * i;
-                        var top = Math.Max(area.Top, origin.Y);
-                        var bottom = Math.Min(area.Bottom, origin.Y + gridStepMinor.Y * gridLinesMinorY);
-                        context.FillRectangle(Rectangle.FromLTRB(left - 0.5f, top, left + 0.5f, bottom), SharedBrush);
-                    }
-
-                    upperBound = CadMath.Clamp((int)Math.Ceiling((area.Bottom - origin.Y) / gridStepMinor.Y), 0, gridLinesMinorY);
-                    lowerBound = CadMath.Clamp((int)Math.Ceiling(-(origin.Y / gridStepMinor.Y)), 0, upperBound);
-
-                    for (var i = lowerBound + 1; i < upperBound; i++)
-                    {
-                        var top = origin.Y + gridStepMinor.Y * i;
-                        var left = Math.Max(area.Left, origin.X);
-                        var right = Math.Min(area.Right, origin.X + gridStepMinor.X * gridLinesMinorX);
-                        context.FillRectangle(Rectangle.FromLTRB(left, top - 0.5f, right, top + 0.5f), SharedBrush);
-                    }
-                }
+                SharedBrush.Color = crosshairRelativeColor;
+                context.FillRectangle(Rectangle.FromXYWH(relativeCursorOnScreen.X - crossHalfW, relativeCursorOnScreen.Y - crossHalfH, crosshairWidth, crosshairHeight), SharedBrush);
+                context.FillRectangle(Rectangle.FromXYWH(relativeCursorOnScreen.X - crossHalfH, relativeCursorOnScreen.Y - crossHalfW, crosshairHeight, crosshairWidth), SharedBrush);
             }
-            else if (gridMode == GridMode.Points)
+
+            //
+            // Draw the status texts
+            //
+
+            SharedBrush.Color = statusColor;
+
+            context.AntialiasMode = AntialiasMode.PerPrimitive;
+            context.DrawText(
+                $"grid {CadMath.ToString3(gridSettingFine)} : {CadMath.ToString3(gridSettingCoarse)} | " +
+                $"zoom {1 / zoomSetting}x | " +
+                $"x {CadMath.ToString2(mousePositionOnWorldSnapped.X)} y {CadMath.ToString2(mousePositionOnWorldSnapped.Y)} | " +
+                $"dx {CadMath.ToString2(mousePositionRelativeToOriginMovableSnapped.X)} dy {CadMath.ToString2(mousePositionRelativeToOriginMovableSnapped.Y)}",
+                textFormatStatus,
+                new Rectangle(area.Left, area.Top, area.Right - 5, area.Bottom - 5),
+                SharedBrush);
+
+            //
+            // Draw the control outline
+            //
+
+            context.PopAxisAlignedClip();
+
+            DrawOutline(context);
+        }
+
+        void DrawGrid(Context context)
+        {
+            context.AntialiasMode = AntialiasMode.Aliased;
+
+            SharedBrush.Color = gridOutlineColor;
+            context.DrawRectangle(Rectangle.FromLTRB(worldOriginOnScreen.X, worldOriginOnScreen.Y, worldEndOnScreen.X, worldEndOnScreen.Y), SharedBrush, 1);
+
+            SharedBrush.Color = gridCoarseLineColor;
+
+            var xGridMajorLinesInWorld = Math.Ceiling(worldSize.Width / gridSettingCoarse);
+            var yGridMajorLinesInWorld = Math.Ceiling(worldSize.Height / gridSettingCoarse);
+
+            var xGridMinorLinesInWorld = Math.Ceiling(worldSize.Width / (gridSettingFine));
+            var yGridMinorLinesInWorld = Math.Ceiling(worldSize.Height / (gridSettingFine));
+
+            if (gridMode == GridMode.Lines && (gridMajorSizeOnScreen.X - worldOriginOnScreen.X) > 5)
             {
-                SharedBrush.Color = griddotMajorColor;
-
-                var upperBoundX = CadMath.Clamp((int)Math.Floor((area.Right - origin.X) / gridStepMajor.X), 0, gridLinesMajorX);
-                var lowerBoundX = CadMath.Clamp((int)Math.Floor(-(origin.X / gridStepMajor.X)), 0, upperBoundX);
-                var upperBoundY = CadMath.Clamp((int)Math.Floor((area.Bottom - origin.Y) / gridStepMajor.Y), 0, gridLinesMajorY);
-                var lowerBoundY = CadMath.Clamp((int)Math.Floor(-(origin.Y / gridStepMajor.Y)), 0, upperBoundY);
-
-                for (var i = lowerBoundX + 1; i <= upperBoundX; i++)
+                for (var i = 1; i < xGridMajorLinesInWorld; i++)
                 {
-                    var left = origin.X + gridStepMajor.X * i;
+                    var x = worldOriginOnScreen.X + (gridMajorSizeOnScreen.X - worldOriginOnScreen.X) * i;
+                    var y1 = worldOriginOnScreen.Y;
+                    var y2 = worldEndOnScreen.Y;
 
-                    for (var j = lowerBoundY + 1; j <= upperBoundY; j++)
-                    {
-                        var top = origin.Y + gridStepMajor.Y * j;
-
-                        context.FillRectangle(Rectangle.FromLTRB(left - 0.5f, top - 0.5f, left + 0.5f, top + 0.5f), SharedBrush);
-                    }
+                    context.DrawLine(new Point(x, y1), new Point(x, y2), SharedBrush, 1f);
                 }
 
-                if (snapMode == SnapMode.Fine)
+                for (var i = 1; i < yGridMajorLinesInWorld; i++)
                 {
-                    SharedBrush.Color = griddotMinorColor;
+                    var y = worldOriginOnScreen.Y + (gridMajorSizeOnScreen.Y - worldOriginOnScreen.Y) * i;
+                    var x1 = worldOriginOnScreen.X;
+                    var x2 = worldEndOnScreen.X;
 
-                    upperBoundX = CadMath.Clamp((int)Math.Ceiling((area.Right - origin.X) / gridStepMinor.X), 0, gridLinesMinorX);
-                    lowerBoundX = CadMath.Clamp((int)Math.Ceiling(-(origin.X / gridStepMinor.X)), 0, upperBoundX);
-                    upperBoundY = CadMath.Clamp((int)Math.Ceiling((area.Bottom - origin.Y) / gridStepMinor.Y), 0, gridLinesMinorY);
-                    lowerBoundY = CadMath.Clamp((int)Math.Ceiling(-(origin.Y / gridStepMinor.Y)), 0, upperBoundY);
+                    context.DrawLine(new Point(x1, y), new Point(x2, y), SharedBrush, 1f);
+                }
 
-                    for (var i = lowerBoundX + 1; i < upperBoundX; i++)
+                if (snapMode == SnapMode.Fine && (gridMinorSizeOnScreen.X - worldOriginOnScreen.X) > 5)
+                {
+                    SharedBrush.Color = gridFineLineColor;
+
+                    for (var i = 1; i < xGridMinorLinesInWorld; i++)
                     {
-                        var left = origin.X + gridStepMinor.X * i;
+                        var x = worldOriginOnScreen.X + (gridMinorSizeOnScreen.X - worldOriginOnScreen.X) * i;
+                        var y1 = worldOriginOnScreen.Y;
+                        var y2 = worldEndOnScreen.Y;
 
-                        for (var j = lowerBoundY + 1; j < upperBoundY; j++)
-                        {
-                            var top = origin.Y + gridStepMinor.Y * j;
+                        context.DrawLine(new Point(x, y1), new Point(x, y2), SharedBrush, 1f);
+                    }
 
-                            context.FillRectangle(Rectangle.FromLTRB(left - 0.5f, top - 0.5f, left + 0.5f, top + 0.5f), SharedBrush);
-                        }
+                    for (var i = 1; i < yGridMinorLinesInWorld; i++)
+                    {
+                        var y = worldOriginOnScreen.Y + (gridMinorSizeOnScreen.Y - worldOriginOnScreen.Y) * i;
+                        var x1 = worldOriginOnScreen.X;
+                        var x2 = worldEndOnScreen.X;
+
+                        context.DrawLine(new Point(x1, y), new Point(x2, y), SharedBrush, 1f);
                     }
                 }
             }
@@ -792,146 +927,17 @@ namespace KodoCad
             // Draw the center axis
             //
 
-            context.AntialiasMode = AntialiasMode.Aliased;
-
             if (drawCenterAxes)
             {
-                SharedBrush.Opacity = 1;
-                SharedBrush.Color = Color.FromAColor(0.5f, basicForegroundColor);
+                SharedBrush.Color = Color.FromAColor(1f, Color.DimGray);
 
-                context.FillRectangle(Rectangle.FromLTRB(
-                    originCenter.X - 0.5f,
-                    Math.Max(area.Top, origin.Y),
-                    originCenter.X + 0.5f,
-                    Math.Min(area.Bottom, origin.Y + gridStepMajor.Y * gridLinesMajorY)), SharedBrush);
+                var centerX = worldOriginOnScreen.X + (worldEndOnScreen.X - worldOriginOnScreen.X) / 2;
+                var centerY = worldOriginOnScreen.Y + (worldEndOnScreen.Y - worldOriginOnScreen.Y) / 2;
 
-                context.FillRectangle(Rectangle.FromLTRB(
-                     Math.Max(area.Left, origin.X),
-                     originCenter.Y - 0.5f,
-                     Math.Min(area.Right, origin.X + gridStepMajor.X * gridLinesMajorX),
-                     originCenter.Y + 0.5f), SharedBrush);
+                context.AntialiasMode = AntialiasMode.Aliased;
+                context.DrawLine(new Point(centerX, worldOriginOnScreen.Y), new Point(centerX, worldEndOnScreen.Y), SharedBrush, 1);
+                context.DrawLine(new Point(worldOriginOnScreen.X, centerY), new Point(worldEndOnScreen.X, centerY), SharedBrush, 1);
             }
-
-            context.AntialiasMode = AntialiasMode.PerPrimitive;
-
-            SharedBrush.Opacity = 1;
-            SharedBrush.Color = Color.LightSkyBlue;
-            context.DrawText(
-                $"grid {CadMath.ToString(CadMath.Round(zoomFactor * gridStepUnitsMinor))} : {CadMath.ToString(CadMath.Round(zoomFactor * gridStepUnitsMajor))}\n" +
-                $"abs  x:{CadMath.ToString(mousePositionRelativeToOriginRealSnapped.X)} y:{CadMath.ToString(mousePositionRelativeToOriginRealSnapped.Y)}\n" +
-                $"cen  x:{CadMath.ToString(mousePositionRelativeToOriginCenterRealSnapped.X)} y:{CadMath.ToString(mousePositionRelativeToOriginCenterRealSnapped.Y)}\n" +
-                $"rel  x:{CadMath.ToString(mousePositionRelativeToOriginMovableRealSnapped.X)} y:{CadMath.ToString(mousePositionRelativeToOriginMovableRealSnapped.Y)}\n" +
-                $"tool {toolMode} : {toolState}",
-                textFormatTest,
-                area,
-                SharedBrush);
-
-            //
-            // Draw geometry.
-            //
-            context.AntialiasMode = AntialiasMode.PerPrimitive;
-
-            var transformStored = context.GetTransform();
-            context.SetTransform(matrixRealToGrid * transformStored * matrixOriginTranslation);
-
-            SharedBrush.Opacity = 1;
-            SharedBrush.Color = geometryColor;
-
-            for (var i = 0; i < shapes.Count; i++)
-            {
-                var shape = shapes[i];
-
-                if (shapesSelected.Contains(shape))
-                {
-                    SharedBrush.Color = new Color(0xFFF3F3F4);
-                    shape.OnDraw(context, SharedBrush);
-                    SharedBrush.Color = geometryColor;
-                }
-                else
-                {
-                    shape.OnDraw(context, SharedBrush);
-                }
-            }
-
-            if (toolMode == ToolMode.Select && toolState == ToolState.Editing)
-            {
-                SharedBrush.Opacity = 1;
-                SharedBrush.Color = Color.LightSkyBlue;
-
-                context.DrawRectangle(selection, SharedBrush, 0.5f * zoomFactor);
-            }
-
-            context.SetTransform(transformStored);
-
-            //
-            // Draw the cursor and relative crosshairs.
-            //
-
-            context.AntialiasMode = AntialiasMode.Aliased;
-
-            SharedBrush.Opacity = 1;
-
-            var crossHalfW = crosshairWidth / 2;
-            var crossHalfH = crosshairHeight / 2;
-            var crossLeft = mousePositionOnScreenSnapped.X;
-            var crossTop = mousePositionOnScreenSnapped.Y;
-
-            SharedBrush.Color = crosshairCursorColor;
-            context.FillRectangle(Rectangle.FromXYWH(crossLeft - crossHalfH, crossTop - crossHalfW, crosshairHeight, crosshairWidth), SharedBrush);
-            context.FillRectangle(Rectangle.FromXYWH(crossLeft - crossHalfW, crossTop - crossHalfH, crosshairWidth, crosshairHeight), SharedBrush);
-
-            crossLeft = originMovable.X;
-            crossTop = originMovable.Y;
-
-            SharedBrush.Color = crosshairRelativeColor;
-            context.FillRectangle(Rectangle.FromXYWH(crossLeft - crossHalfW, crossTop - crossHalfH, crosshairWidth, crosshairHeight), SharedBrush);
-            context.FillRectangle(Rectangle.FromXYWH(crossLeft - crossHalfH, crossTop - crossHalfW, crosshairHeight, crosshairWidth), SharedBrush);
-
-            //
-            // Draw the grid outline
-            //
-            var gridOutline = Rectangle.FromLTRB(
-                Math.Max(area.Left, origin.X),
-                Math.Max(area.Top, origin.Y),
-                Math.Min(area.Right, origin.X + gridStepMajor.X * gridLinesMajorX),
-                Math.Min(area.Bottom, origin.Y + gridStepMajor.Y * gridLinesMajorY));
-
-            SharedBrush.Opacity = 1;
-            SharedBrush.Color = gridOutlineColor;
-
-            context.DrawRectangle(gridOutline, SharedBrush, 1);
-
-            var infoRect = Rectangle.FromLTRB(area.Right - 300, area.Bottom - 30, area.Right, area.Bottom);
-
-            Style.Align(infoRect);
-            context.FillRectangle(infoRect, Style.Background);
-            //context.FillRectangle(infoRect, Style.Foreground);
-
-            SharedBrush.Color = Color.GhostWhite;
-
-            var relativeStr = "";
-            textFormatBig.TextAlignment = TextAlignment.Center;
-            textFormatBig.ParagraphAlignment = ParagraphAlignment.Center;
-            var p = mousePositionRelativeToOriginMovableRealSnapped;
-            var layoutStr =
-                $"{relativeStr} " +
-                $"dX {CadMath.ToString2(p.X)}" +
-                $" dY {CadMath.ToString2(p.Y)}";
-            using (var layout = new TextLayout(layoutStr, textFormatBig, infoRect.Dimensions))
-            {
-                //layout.SetFontSize(10, new TextRange(layoutStr.IndexOf(relativeStr, StringComparison.Ordinal), relativeStr.Length));
-                context.DrawTextLayout(layout, infoRect.TopLeft, SharedBrush);
-            }
-
-            SharedBrush.Color = Color.Black;
-            context.DrawRectangle(infoRect, SharedBrush, 2);
-
-            //
-            // Draw the control outline.
-            //
-            DrawOutline(context);
-
-            context.PopAxisAlignedClip();
         }
     }
 }

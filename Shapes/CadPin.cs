@@ -47,6 +47,8 @@ namespace KodoCad
 
         public override Point Origin => lineBegin;
 
+        public override Rectangle BoundingBox => boundingBox;
+
         public CadPin(string nameOfPin, int numberOfPin, float lenghtOfPin, TextFormat formatOfName, TextFormat formatOfNumber, Point initialPosition, CadPin original = null)
         {
             nameFormat = formatOfName;
@@ -212,7 +214,12 @@ namespace KodoCad
         {
         }
 
-        public override JsonNode ToOutput()
+        public override string ToOutput()
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void FromOutput(string output)
         {
             throw new NotImplementedException();
         }

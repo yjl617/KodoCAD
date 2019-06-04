@@ -9,6 +9,8 @@ namespace KodoCad
     {
         public override Point Origin => throw new NotImplementedException();
 
+        public override Rectangle BoundingBox => throw new NotImplementedException();
+
         public override bool Contained(Rectangle inReal)
         {
             throw new NotImplementedException();
@@ -43,7 +45,12 @@ namespace KodoCad
         {
         }
 
-        public override JsonNode ToOutput()
+        public override void FromOutput(string output)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override string ToOutput()
         {
             throw new NotImplementedException();
         }

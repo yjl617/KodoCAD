@@ -1,18 +1,21 @@
 ﻿using System;
 
-using Kodo.Json;
 using Kodo.Graphics;
+
+using static KodoCad.CadMath;
+using static KodoCad.CadUtilities;
 
 namespace KodoCad
 {
     class CadText : CadShape
     {
         bool moving;
-        string text;
-        float size;
+        readonly string text;
+        readonly float size;
         Point origin;
+        TextFormat format;
         TextLayout layout;
-        CadShapeAnchor anchor;
+        readonly CadShapeAnchor anchor;
 
         Rectangle boundingBox;
 
@@ -22,11 +25,14 @@ namespace KodoCad
 
         public override Point Origin => origin;
 
-        public CadText(string text, TextFormat textFormat, Point initialPosition, CadShapeAnchor anchorPoint = CadShapeAnchor.Center)
+        public override Rectangle BoundingBox => boundingBox;
+
+        public CadText(string text, string fontFamily, float fontSize, FontWeight fontWeight, FontStyle fontStyle, Point initialPosition, CadShapeAnchor anchorPoint = CadShapeAnchor.Left)
         {
             this.text = text;
-            size = textFormat.FontSize;
-            layout = new TextLayout(text, textFormat, float.MaxValue, float.MaxValue);
+            size = fontSize;
+            format = new TextFormat(fontFamily, fontWeight, fontStyle, FontStretch.Normal, fontSize, "en-US");
+            layout = new TextLayout(text, format, float.MaxValue, float.MaxValue);
             anchor = anchorPoint;
             origin = initialPosition;
 
@@ -106,12 +112,26 @@ namespace KodoCad
             }
         }
 
-        public override JsonNode ToOutput()
+        public override void Rotate()
         {
             throw new NotImplementedException();
         }
 
-        public override void Rotate()
+        public override string ToOutput()
+        {
+            return $"text " +
+                $"{Stringify(origin.X)}," +
+                $"{Stringify(origin.Y)}," +
+                $"{format.FontFamilyName}," +
+                $"{Stringify((int)format.FontWeight)}," +
+                $"{Stringify((int)format.FontStyle)}," +
+                $"{Stringify(size)}," +
+                $"{Stringify((int)Anchor)}," +
+                $"{Stringify(Part)}," +
+                $"{text}";
+        }
+
+        public override void FromOutput(string output)
         {
             throw new NotImplementedException();
         }

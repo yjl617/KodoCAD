@@ -16,13 +16,10 @@ namespace KodoCad
     public static class CadUtilities
     {
         public static string Stringify(float value)
-            => value.ToString(CultureInfo.InvariantCulture);
+            => MillimetersToMicrometers(value).ToString(CultureInfo.InvariantCulture);
 
         public static string Stringify(int value)
             => value.ToString(CultureInfo.InvariantCulture);
-
-        public static string Stringify(Enum value)
-            => value.ToString();
 
         public static float MicrometersToMillimeters(int micrometers)
             => micrometers / 1000f;
@@ -95,12 +92,26 @@ namespace KodoCad
             return new Point(Clamp(value.X, min.X, max.X), Clamp(value.Y, min.Y, max.Y));
         }
 
+        /// <summary>
+        /// 0.000 mm
+        /// </summary>
         public static string ToString(float number)
         {
             return number.ToString("0.000 'mm'", CultureInfo.InvariantCulture);
         }
 
+        /// <summary>
+        /// 0.000
+        /// </summary>
+        public static string ToString3(float number)
+        {
+            return number.ToString("0.000", CultureInfo.InvariantCulture);
+        }
+
         public static string ToString2(double number) => ToString2((float)number);
+        /// <summary>
+        /// +000.000;-000.000
+        /// </summary>
         public static string ToString2(float number)
         {
             return number.ToString("'+'000.000;'-'000.000", CultureInfo.InvariantCulture);

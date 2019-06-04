@@ -19,6 +19,8 @@ namespace KodoCad
 
         static void Main(string[] args)
         {
+            //var line = new CadLine("	line 100,   100,110,110,y,10,0,0" + Environment.NewLine);
+            //var o = line.ToOutput();
             /*var document = new JsonDocument();
             
             var shape = new CadRectangle(Rectangle.FromXYWH(100, 100, 10, 10));
@@ -26,11 +28,10 @@ namespace KodoCad
 
             document.Write("e:/KodoCAD.js", false, true);*/
 
-
             using (var manager = new WindowManager(OnUnhandledException))
             {
                 var windowSettings = new WindowSettings();
-                windowSettings.Area = Rectangle.FromXYWH(100, 100, 1280, 720);
+                windowSettings.Area = Rectangle.FromXYWH(100, 100, 1280, 880);
                 windowSettings.Name = "KodoCAD";
                 var window = new CadWindow(manager, windowSettings);
 
@@ -220,8 +221,7 @@ namespace KodoCad
 
         void OnClickOK()
         {
-            var textFormat = new TextFormat("Nunito", FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, float.Parse(textboxSize.Text, CultureInfo.InvariantCulture), "en-US");
-            shapeNew = new CadText(textboxText.Text, textFormat, shapeOriginal.Origin);
+            shapeNew = new CadText(textboxText.Text, "Roboto Mono", float.Parse(textboxSize.Text, CultureInfo.InvariantCulture), FontWeight.Normal, FontStyle.Normal, shapeOriginal.Origin);
             Hide();
         }
 

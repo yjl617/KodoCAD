@@ -1,6 +1,5 @@
 ﻿using System;
 
-using Kodo.Json;
 using Kodo.Graphics;
 
 using static KodoCad.CadMath;
@@ -14,6 +13,8 @@ namespace KodoCad
         Rectangle bound;
 
         public override Point Origin => rect.TopLeft;
+
+        public override Rectangle BoundingBox => bound;
 
         public CadRectangle()
         {
@@ -74,7 +75,7 @@ namespace KodoCad
 
             brush.Color = new Color(brush.Color.Alpha, brush.Color.Red - 0.5f, brush.Color.Green - 0.5f, brush.Color.Blue - 0.5f);
 
-            context.FillRectangle(rect, brush);
+            //context.FillRectangle(rect, brush);
 
             brush.Color = stored;
 
@@ -94,9 +95,9 @@ namespace KodoCad
                    LineContainsPoint(rect.TopLeft, rect.BottomLeft, inReal, threshold);
         }
 
-        public override bool Contained(Rectangle inReal)
+        public override bool Contained(Rectangle rectangleOnWorld)
         {
-            return inReal.Contains(rect.TopLeft) && inReal.Contains(rect.BottomRight);
+            return rectangleOnWorld.Contains(rect.TopLeft) && rectangleOnWorld.Contains(rect.BottomRight);
         }
 
         public override void Move(Point moveAmount)
@@ -107,22 +108,25 @@ namespace KodoCad
 
         public override void Rotate()
         {
-            CadMath.Rotate(rect, rect.Center);
+            rect = CadMath.Rotate(rect, rect.Center);
         }
 
-        public override JsonNode ToOutput()
+        public override string ToOutput()
         {
-            var json = new JsonNode(JsonType.Object, "rect");
-            json.Append(new JsonNode(JsonType.Number, "l", Stringify(rect.Left)));
-            json.Append(new JsonNode(JsonType.Number, "t", Stringify(rect.Top)));
-            json.Append(new JsonNode(JsonType.Number, "r", Stringify(rect.Right)));
-            json.Append(new JsonNode(JsonType.Number, "b", Stringify(rect.Bottom)));
+            return $"rect " +
+                $"{Stringify(rect.Left)}," +
+                $"{Stringify(rect.Top)}," +
+                $"{Stringify(rect.Right)}," +
+                $"{Stringify(rect.Bottom)}," +
+                $"{(Filled ? "y" : "n")}," +
+                $"{Stringify(StrokeWidth)}," +
+                $"{Stringify((int)Type)}," +
+                $"{Stringify(Part)}";
+        }
 
-            json.Append(new JsonNode(Filled ? JsonType.True : JsonType.False, "filled"));
-            json.Append(new JsonNode(JsonType.Number, "stroke", Stringify(StrokeWidth)));
-            json.Append(new JsonNode(JsonType.String, "type", Stringify(Type)));
-            json.Append(new JsonNode(JsonType.Number, "part", Stringify(0)));
-            return json;
+        public override void FromOutput(string output)
+        {
+            throw new NotImplementedException();
         }
     }
 }
